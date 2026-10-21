@@ -1,0 +1,50 @@
+{
+    "pretask": {
+        "controller": [
+            "CloudBrowser"
+        ],
+        "exec": "agent/go-service",
+        "args": [
+            "--pretask",
+            "CloudBrowserLaunch"
+        ],
+        "name": "CloudBrowserLaunch",
+        "label": "$pretask.CloudBrowserLaunch.label",
+        "description": "$pretask.CloudBrowserLaunch.description",
+        "option": [
+            "CloudBrowserLaunchBrowserPath"
+        ]
+    },
+    "option": {
+        "CloudBrowserLaunchBrowserPath": {
+            "type": "select",
+            "label": "$option.CloudBrowserLaunchBrowserPath.label",
+            "cases": [
+                {
+                    "name": "Auto",
+                    "label": "$option.CloudBrowserLaunchBrowserPath.cases.Auto.label"
+                },
+                {
+                    "name": "Manual",
+                    "label": "$option.CloudBrowserLaunchBrowserPath.cases.Manual.label",
+                    "option": [
+                        "CloudBrowserLaunchBrowserExe"
+                    ]
+                }
+            ],
+            "default_case": "Auto"
+        },
+        "CloudBrowserLaunchBrowserExe": {
+            "type": "input",
+            "label": "$option.CloudBrowserLaunchBrowserExe.label",
+            "inputs": [
+                {
+                    "name": "BrowserExe",
+                    "label": "$option.CloudBrowserLaunchBrowserExe.BrowserExe.label",
+                    "default": "",
+                    "pipeline_type": "string"
+                }
+            ]
+        }
+    }
+}

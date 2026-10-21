@@ -15,7 +15,7 @@ var screenshotStableBaseline *image.RGBA
 
 var _ maa.CustomRecognitionRunner = (*ScreenshotStableRecognition)(nil)
 
-// ScreenshotStableRecognition 仅在 Win32-Front 时，于 Agent 进程生命周期内判定一次
+// ScreenshotStableRecognition 仅在 Win32-Front 与 CloudBrowser 时，于 Agent 进程生命周期内判定一次
 // 画面是否连续三帧稳定。每次调用只用 arg.Img：第 1 次存 baseline；第 2 帧不匹配则结束周期；
 // 匹配后再采第 3 帧确认。仅第 3 帧仍相似时命中。
 type ScreenshotStableRecognition struct{}
@@ -71,7 +71,8 @@ func (r *ScreenshotStableRecognition) Run(ctx *maa.Context, arg *maa.CustomRecog
 }
 
 func shouldRunScreenshotStable() bool {
-	return pienv.ControllerName() == "Win32-Front"
+	name := pienv.ControllerName()
+	return name == "Win32-Front" || name == pienv.ControllerNameCloudBrowser
 }
 
 func finishScreenshotStable() {

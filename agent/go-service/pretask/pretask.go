@@ -3,12 +3,14 @@ package pretask
 import (
 	"os"
 
+	"github.com/MaaXYZ/MaaEnd/agent/go-service/pretask/cloudbrowser"
 	"github.com/MaaXYZ/MaaEnd/agent/go-service/pretask/launchgamepc"
 	"github.com/rs/zerolog/log"
 )
 
 func init() {
 	Register("LaunchGamePC", launchgamepc.Run)
+	Register("CloudBrowserLaunch", cloudbrowser.Run)
 }
 
 // Handler 是 pretask 的执行函数：成功返回 true，失败返回 false。

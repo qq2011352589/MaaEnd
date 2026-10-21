@@ -1,0 +1,16 @@
+{
+    "task": [
+        {
+            "name": "CloudBrowserOpenGame",
+            "label": "$task.CloudBrowserOpenGame.label",
+            "entry": "OpenGame",
+            "description": "$task.CloudBrowserOpenGame.description",
+            "group": [
+                "other_menu"
+            ],
+            "controller": [
+                "CloudBrowser"
+            ]
+        }
+    ]
+}

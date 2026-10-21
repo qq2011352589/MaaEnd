@@ -1,0 +1,145 @@
+{
+    // 网页版云终末地门户 https://endfield.hypergryph.com/cloud
+    //
+    // 门户是响应式 React SPA，同一元素在「未登录落地页」与「已登录账号面板」下位置不同，
+    // 因此只给实测过坐标的节点写 roi，其余一律整帧 OCR，避免把未标定的坐标当成已标定。
+    // 门户 UI 只有国服中文，不存在多语言展开需求。
+    "CloudBrowserPortalStartGame": {
+        "desc": "门户：点击开始游戏",
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                // 落地页按钮实测 (995,563)-(1175,612)；已登录面板下左移到 (785,578)-(1175,618)
+                "roi": [
+                    780,
+                    555,
+                    400,
+                    65
+                ],
+                "expected": [
+                    "开始游戏"
+                ]
+            }
+        },
+        "action": {
+            "type": "Click"
+        }
+    },
+    "CloudBrowserDialogConfirmButton": {
+        "desc": "门户弹窗：知道了按钮",
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                "expected": [
+                    "知道了"
+                ]
+            }
+        }
+    },
+    "CloudBrowserSpeedtestFailed": {
+        // 蔚领 SDK 对 8 个节点测速全部超时后 selectDefaultNode 返回 6544 并弹窗。
+        // 低配机器上这是主线程被渲染拖慢造成的假性高 RTT，关弹窗重试即可，故设为可重试分支。
+        "desc": "门户：测速失败，关闭弹窗后重试",
+        "max_hit": 5,
+        "recognition": {
+            "type": "And",
+            "param": {
+                "all_of": [
+                    "CloudBrowserSpeedtestFailedText",
+                    "CloudBrowserDialogConfirmButton"
+                ],
+                "box_index": 1
+            }
+        },
+        "action": {
+            "type": "Click"
+        }
+    },
+    "CloudBrowserSpeedtestFailedText": {
+        // 括号内错误码随失败原因变化，OCR 对整句不稳定，截断匹配
+        "desc": "门户：测速失败文案",
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                "expected": [
+                    // "测速失败，请稍后再试(6544)"
+                    // @i18n-skip
+                    "测速失败"
+                ]
+            }
+        }
+    },
+    "CloudBrowserNetworkAbnormal": {
+        "desc": "门户：网络连接异常，关闭弹窗后重试",
+        "max_hit": 3,
+        "recognition": {
+            "type": "And",
+            "param": {
+                "all_of": [
+                    "CloudBrowserNetworkAbnormalText",
+                    "CloudBrowserDialogConfirmButton"
+                ],
+                "box_index": 1
+            }
+        },
+        "action": {
+            "type": "Click"
+        }
+    },
+    "CloudBrowserNetworkAbnormalText": {
+        "desc": "门户：网络连接异常文案",
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                "expected": [
+                    "网络连接异常，请检查网络连接后重试"
+                ]
+            }
+        }
+    },
+    "CloudBrowserPortalReconnecting": {
+        // 云实例是单会话：同一账号被另一个客户端挤掉后，门户会停在转圈的「游戏正在重连中」。
+        // 只识别不动作，供上层把它当作等待态而非失败态，同时避免对着转圈画面空转。
+        "desc": "门户：游戏正在重连中",
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                "expected": [
+                    "游戏正在重连中"
+                ]
+            }
+        }
+    },
+    "CloudBrowserPortalLoggedIn": {
+        // 账号面板文本形如「通行证UID：1234567890」，UID 随账号变化，故截断匹配
+        "desc": "门户：已登录",
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                "expected": [
+                    // "通行证UID：1234567890"
+                    // @i18n-skip
+                    "通行证UID"
+                ]
+            }
+        }
+    },
+    "CloudBrowserPortalLoginModal": {
+        "desc": "门户：鹰角登录框仍在，会话已失效",
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                // 落地页实测：手机号输入框提示文本位于 (478,258)-(573,287)
+                "roi": [
+                    428,
+                    250,
+                    425,
+                    45
+                ],
+                "expected": [
+                    "请输入手机号"
+                ]
+            }
+        }
+    }
+}

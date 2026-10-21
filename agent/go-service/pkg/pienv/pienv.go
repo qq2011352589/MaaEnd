@@ -231,6 +231,12 @@ func ControllerName() string {
 	return ""
 }
 
+// ControllerNameCloudBrowser is the interface.json name of the browser-hosted Cloud
+// Endfield controller. It declares type Win32 because ProjectInterface has no browser
+// controller type, so anything that must treat it apart from a real desktop client has
+// to compare this name rather than ControllerKind().
+const ControllerNameCloudBrowser = "CloudBrowser"
+
 /* ******** Controller Kind ******** */
 
 // Normalized controller kinds. Both the raw type injected by the Client

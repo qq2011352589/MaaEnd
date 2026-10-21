@@ -57,6 +57,27 @@
             ]
         },
         {
+            "name": "CloudBrowser",
+            "label": "$controller.CloudBrowser.label",
+            "description": "$controller.CloudBrowser.description",
+            "type": "Win32",
+            "permission_required": true,
+            "attach_resource_path": [
+                "./resource_cloud_browser"
+            ],
+            "win32": {
+                "class_regex": "Chrome_WidgetWin_1",
+                // pretask CloudBrowserLaunch 以 --app= 打开门户，窗口标题即页面标题《云·终末地》官方网站
+                "window_regex": "云·终末地",
+                // ScreenDC 走 GDI BitBlt，Chromium 由 GPU 合成，个别机器上会截到黑帧；
+                // 若识别全部失败改试 FramePool 或 DXGI_DesktopDup_Window
+                "screencap": "ScreenDC",
+                // Seize 移动真实光标、发送真实按键，页面里的 WebRTC 输入与鼠标视角才拿得到事件
+                "mouse": "Seize",
+                "keyboard": "Seize"
+            }
+        },
+        {
             "name": "PlayCover",
             "type": "PlayCover",
             "attach_resource_path": [
@@ -204,6 +225,7 @@
     "import": [
         // pretask
         "tasks/pretasks/LaunchGamePC.json",
+        "tasks/pretasks/CloudBrowserLaunch.json",
         // group: regional_development
         "tasks/OutpostTrading.json",
         "tasks/SeizeDeliveryJobs.json",
@@ -268,6 +290,7 @@
         // "tasks/AdbAutoFightTest.json", // 🧪战斗测试，暂不上架
         // "tasks/WebEvent202605.json", // 该活动已关闭
         "tasks/AndroidOpenGame.json",
+        "tasks/CloudBrowserOpenGame.json",
         "tasks/CloseGame.json",
         "tasks/CloseGamePC.json",
         // group: realtime

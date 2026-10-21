@@ -1,0 +1,23 @@
+{
+    "configs": {
+        "name": "云浏览器云流，测试复用桌面端 EnterGame 能否识别云端串流出的标题页",
+        "resource": "官服",
+        "controller": "CloudBrowser"
+    },
+    "cases": [
+        {
+            "name": "云端标题页：右侧「点击任意位置继续」与右上角公告按钮同时在场",
+            "image": "云浏览器_云流_标题页.png",
+            "hits": [
+                "EnterGame",
+                "EnterGameOCR",
+                "EnterGameRecognition"
+            ]
+        },
+        {
+            "name": "云端启动 logo：还没到标题页，EnterGame 不应命中",
+            "image": "云浏览器_云流_启动logo.png",
+            "hits": []
+        }
+    ]
+}

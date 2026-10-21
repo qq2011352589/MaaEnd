@@ -1,0 +1,40 @@
+{
+    // 覆盖基础 OpenGame 的链路。任务 entry 必须落在 base resource 里（否则其它控制器加载不到该节点，
+    // maa-tools check 会报「未知入口任务」），所以这里不新建入口节点，而是同名覆盖 OpenGame.next。
+    //
+    // 必须覆盖而不是直接用基础链路：基础 OpenGame 的 next 末尾是 StartUpGame，而 StartUpGame 没有
+    // recognition、永远命中并去拉起进程，浏览器版没有可拉起的进程。
+    // 也不能把门户节点塞进基础 OpenGame：门户的「开始游戏」与云·终末地安卓端 CloudEndfieldStartGame
+    // 的 ROI 重叠，混在一条 next 里会互相抢命中。
+    //
+    // 网页云里跑的其实是国服 Windows 客户端，所以游戏内标题页直接复用桌面端的 EnterGame。
+    "OpenGame": {
+        "desc": "云浏览器：从门户进入游戏",
+        "next": [
+            "EnterGame",
+            "[JumpBack]EnterGameResourceInitializeComplete",
+            "[JumpBack]EnterGameRecognition",
+            "CloudBrowserPortalStartGame",
+            "CloudBrowserSpeedtestFailed",
+            "CloudBrowserNetworkAbnormal",
+            "CloudBrowserPortalReconnecting",
+            "CloudBrowserOpenGameFailed"
+        ]
+    },
+    "CloudBrowserOpenGameFailed": {
+        // 会话失效时门户会退回鹰角登录框；浏览器窗口没打开或被遮挡时什么也识别不到。
+        // 两者都不是自动流程能解决的，直接判定失败，避免对着登录框空转到超时。
+        "desc": "云浏览器：无法从门户进入游戏",
+        "recognition": {
+            "type": "Or",
+            "param": {
+                "any_of": [
+                    "CloudBrowserPortalLoginModal"
+                ]
+            }
+        },
+        "action": {
+            "type": "StopTask"
+        }
+    }
+}

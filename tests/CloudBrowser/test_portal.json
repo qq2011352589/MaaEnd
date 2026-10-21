@@ -1,0 +1,31 @@
+{
+    "configs": {
+        "name": "云浏览器门户，测试从官网进入云·终末地的入口识别",
+        "resource": "官服",
+        "controller": "CloudBrowser"
+    },
+    "cases": [
+        {
+            "name": "未登录：登录弹窗与开始游戏按钮同时在场",
+            "image": "云浏览器_门户_登录弹窗.png",
+            "hits": [
+                "CloudBrowserPortalStartGame",
+                "CloudBrowserPortalLoginModal"
+            ]
+        },
+        {
+            "name": "登录弹窗已关闭：只剩开始游戏按钮",
+            "image": "云浏览器_门户_开始游戏.png",
+            "hits": [
+                "CloudBrowserPortalStartGame"
+            ]
+        },
+        {
+            "name": "会话被另一端顶掉：页面提示重连中",
+            "image": "云浏览器_门户_重连中.png",
+            "hits": [
+                "CloudBrowserPortalReconnecting"
+            ]
+        }
+    ]
+}
