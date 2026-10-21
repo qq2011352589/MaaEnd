@@ -655,7 +655,13 @@ jobs:
   changelog:
     name: Generate changelog
     needs: meta
+    # 只有正式发布需要 changelog；CI 构建跳过，避免私有仓库上无谓的 GitHub API 调用
+    if: needs.meta.outputs.is_release == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # git-cliff 读取 pulls 元数据需要该权限，否则私有仓库返回 403
+      pull-requests: read
     outputs:
       release_body: ${{ steps.git-cliff.outputs.content }}
     steps:
