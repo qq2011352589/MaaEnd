@@ -677,6 +677,8 @@ jobs:
         env:
           OUTPUT: CHANGES.md
           GITHUB_REPO: ${{ github.repository }}
+          # 私有仓库下 git-cliff 匿名读取 pulls/commits 会被 403，必须带 token
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # 正式版的 Android APK：与桌面包同一 tag、同一 MaaFramework 版本，一起进 Release
   android:
