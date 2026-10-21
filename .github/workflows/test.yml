@@ -30,6 +30,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: true
+          # 测试集子模块为私有仓库，GITHUB_TOKEN 无法跨仓库读取
+          token: ${{ secrets.CI_SUBMODULE_TOKEN }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -65,6 +67,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
+          token: ${{ secrets.CI_SUBMODULE_TOKEN }}
 
       - name: Setup Python
         uses: astral-sh/setup-uv@v7
@@ -78,11 +81,9 @@ jobs:
       # 与 install.yml 相同：以 MaaFramework 最新 release 为准，SDK、Python 绑定与 MaaUtils 均对齐到该版本。
       - name: Resolve MaaFramework version
         id: maafw
-        uses: step-security/github-action-get-latest-release@v0.8.2
-        with:
-          repository: MaaXYZ/MaaFramework
-          excludes: "draft"
-          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "release=$(gh release view --repo MaaXYZ/MaaFramework --json tagName --jq .tagName)" >> "$GITHUB_OUTPUT"
 
       # Agent 按 MaaUtils 子模块编译，必须与运行时加载的 MaaFramework 同版。
       - name: Check MaaUtils matches MaaFramework

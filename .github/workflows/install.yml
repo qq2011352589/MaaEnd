@@ -94,19 +94,27 @@ jobs:
           # workflow_dispatch 指定 ref 时 github.sha 是默认分支 sha，这里取实际 checkout 的 commit
           echo "sha=$(git rev-parse HEAD)" | tee -a $GITHUB_OUTPUT
 
+      # step-security 的 release action 在私有仓库需付费订阅，这里改用 runner 自带的 gh
       - id: maafw-latest-release
-        uses: step-security/github-action-get-latest-release@v0.8.2
-        with:
-          repository: MaaXYZ/MaaFramework
-          excludes: "draft"
-          token: ${{ secrets.GITHUB_TOKEN }}
+        name: Resolve latest MaaFramework release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "release=$(gh release view --repo MaaXYZ/MaaFramework --json tagName --jq .tagName)" >> "$GITHUB_OUTPUT"
 
       - id: mxu-latest-release
-        uses: step-security/github-action-get-latest-release@v0.8.2
-        with:
-          repository: MistEO/MXU
-          excludes: ${{ (steps.set_tag.outputs.is_release == 'true' && steps.set_tag.outputs.is_prerelease == 'false') && 'prerelease, draft' || 'draft' }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+        name: Resolve latest MXU release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IS_RELEASE: ${{ steps.set_tag.outputs.is_release }}
+          IS_PRERELEASE: ${{ steps.set_tag.outputs.is_prerelease }}
+        run: |
+          # 正式版只取稳定 release，预发布/CI 构建允许 prerelease
+          if [[ "$IS_RELEASE" == "true" && "$IS_PRERELEASE" == "false" ]]; then
+            tag=$(gh release list --repo MistEO/MXU --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')
+          else
+            tag=$(gh release list --repo MistEO/MXU --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
+          fi
+          echo "release=$tag" >> "$GITHUB_OUTPUT"
 
       # 校验 MaaUtils submodule 是否落后/分叉于本次构建所用 maafw 版锁定的 commit，
       # 不同步则联动触发 sync_maautils 工作流开修复 PR，并终止全部构建
@@ -202,6 +210,8 @@ jobs:
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
           submodules: true
+          # 测试集子模块为私有仓库，GITHUB_TOKEN 无法跨仓库读取
+          token: ${{ secrets.CI_SUBMODULE_TOKEN }}
 
       - name: Install Linux dependencies
         if: matrix.os == 'linux'

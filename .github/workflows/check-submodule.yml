@@ -49,14 +49,18 @@ jobs:
           else
             BASE="$PUSH_BEFORE"
             HEAD_SHA="$PUSH_AFTER"
-            TITLE=$(git log --format="%s" "$BASE..$HEAD_SHA")
             SOURCE="commit titles"
           fi
 
           # Skip if base is all zeros (e.g. new branch with no prior commits)
+          # 必须在 git log 之前判断，否则 0000..HEAD 不是合法区间
           if [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             echo "::notice::New branch, skipping submodule check"
             exit 0
+          fi
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            TITLE=$(git log --format="%s" "$BASE..$HEAD_SHA")
           fi
 
           echo "Diff range: $BASE .. $HEAD_SHA"

@@ -102,14 +102,13 @@ jobs:
           echo "abis=$abis" | tee -a "$GITHUB_OUTPUT"
           echo "tag=$tag" | tee -a "$GITHUB_OUTPUT"
 
-      # 与 install.yml 保持一致：取 MaaFramework 最新 release
+      # 与 install.yml 保持一致：取 MaaFramework 最新 release；私有仓库无法使用 step-security 付费 action
       - id: maafw-latest-release
+        name: Resolve latest MaaFramework release
         if: inputs.maafw_version == ''
-        uses: step-security/github-action-get-latest-release@v0.8.2
-        with:
-          repository: MaaXYZ/MaaFramework
-          excludes: "draft"
-          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "release=$(gh release view --repo MaaXYZ/MaaFramework --json tagName --jq .tagName)" >> "$GITHUB_OUTPUT"
 
   agents:
     needs: meta
