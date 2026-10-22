@@ -54,9 +54,9 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
 鼠标点击能否让页面进入排队；手机版再切 `CloudBrowserMobile` 验证触摸注入与
 `resource_adb` 的标题页识别。
 
-## 三条硬约束
+## 四条硬约束
 
-这三条是踩出来的，不满足就整条链路失效，改动 `agent/go-service/pretask/cloudbrowser/` 前请先读完。
+这四条是踩出来的，不满足就整条链路失效，改动 `agent/go-service/pretask/cloudbrowser/` 前请先读完。
 
 1. **客户区必须正好 1280×720。** 仓库所有 ROI 与模板都以 720p 为基准；ADB 有 MaaFramework 自动缩放，
    桌面控制器截到多大就是多大。`--window-size` 设的是**外框**，所以 pretask 先量一次
@@ -67,6 +67,10 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
 3. **只能有一个实例。** 云实例是单会话的，第二个客户端会把第一个挤回标题页（已实测）。
    pretask 按 `--user-data-dir=<绝对路径>` 匹配进程命令行复用已有实例，绝不启第二个。
    登录态就存在这个 profile 里（`os.UserConfigDir()/MaaEnd/cloud_browser`），不要挪进安装目录或版本库。
+4. **动作执行期间门户窗口必须保持在最前。** `Seize` 输入是按绝对屏幕坐标投递的真实事件，不属于目标
+   窗口的 HWND；框架只在 `ScreenDC` 抓帧前尝试抢前台，抓帧方式换成 `FramePool` 后连这一次都没有。
+   pretask 只在启动时置顶一次，之后被别的窗口盖住时识别仍成功、动作照报成功，点击却打进遮挡窗口。
+   详见「FramePool 修好了识别，但输入仍然要求窗口在最前」。
 
 另外 pretask 无条件给浏览器传 `--proxy-bypass-list`，放行 `vlinkcloud.cn` / `hypergryph.com` /
 `hycdn.cn` / `skland.com`。WebRTC 媒体走 UDP，被系统 HTTP 代理劫持时不会报错，只会表现为
@@ -116,13 +120,90 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
 
 ## 验证状态
 
-> [!IMPORTANT]
->
-> 以下结论来自 Linux Chromium 上的 Playwright 探测与节点测试，**尚未在真实 Windows + MaaFramework
-> Win32 控制器上跑通**。第一次真机验证请按这个顺序看：
->
-> 1. `ScreenDC` 能否截到 Chromium 窗口。Chromium 由 GPU 合成，GDI BitBlt 有截到黑帧的风险；
->    若识别全部失败，改 `interface.json` 里的 `screencap` 为 `FramePool` 或 `DXGI_DesktopDup_Window`。
-> 2. `Seize` 鼠标/键盘能否真正进入页面（WebRTC 输入与鼠标视角需要真实事件）。
-> 3. 进入游戏后页面标题是否仍含「云·终末地」，即 `window_regex` 是否还匹配。
-> 4. 排队、时长耗尽、断线重连后的自动恢复分支尚未实现。
+2026-10-23 在真实 Windows 上跑通了外置浏览器链路：Snapdragon 8cx Gen 2 / Adreno 685 平板，
+2560×1600 系统缩放 200%，MaaFramework v5.14.3（Windows ARM64），`agent/go-service --pretask
+CloudBrowserLaunch` 退出码 0，Edge 以 `--app` 打开门户且客户区正好 1280×720，
+Win32 控制器连上窗口、OCR 命中门户文本。因此前三条硬约束均按预期工作；第四条（动作期间窗口保持在
+最前）在这次端到端里恰好被违反了，见下文。
+用生产 `OpenGame` + `resource_cloud_browser` 端到端跑了一遍：`reco hit
+[result.name=CloudBrowserPortalStartGame]` → `Click` → `Node.Action.Succeeded` →
+`### All tasks have been completed ###`；不过那次点击的屏幕坐标正好压在用户窗口上（见下文
+「FramePool 修好了识别，但输入仍然要求窗口在最前」），所以只证明链路能跑，不证明云端真的开始排队。
+
+仍未验证的部分：已登录后的真实串流画面能否被桌面端 `EnterGame` 命中、进入游戏后标题是否仍含
+「云·终末地」（`window_regex`）、排队 / 时长耗尽 / 断线重连的自动恢复分支（尚未实现）、
+以及 MaaFwApp 内嵌 WebView 两条控制器。
+
+### 截图方式怎么选
+
+同一窗口、同一几何下逐个跑 `speed_test` + 全帧 OCR，并用一个置顶窗口盖住门户左半侧做对照：
+
+| `screencap` | 实际方法位 | 连接 | 单帧耗时 | 正常前台 | 被置顶窗口遮挡 |
+| --- | --- | --- | --- | --- | --- |
+| `FramePool` | 2 | 可 | 30–33ms | 完整页面 | **仍是完整页面**，且不动 z-order |
+| `ScreenDC` | 32 | 可 | 24–28ms | 完整页面 | **把遮挡物一起截进来**，门户关键控件全部丢失 |
+| `PrintWindow` | 16 | 可 | ~253ms | 完整页面 | 未测 |
+| `GDI` | 1 | 可 | ~7ms | 纯黑帧 | — |
+| `DXGI_DesktopDup` | 4 | **不可** | — | `DuplicateOutput` 返回 `E_ACCESSDENIED`（Adreno 685） | — |
+| `DXGI_DesktopDup_Window` | 8 | **不可** | — | 同上 | — |
+
+所以默认值取 `FramePool`。`ScreenDC` 抓的是屏幕像素，MaaFramework 每次抓帧前都要把目标窗口提到
+最上层才截得对（日志里 `Failed to ensure foreground window before screencap` 只是前台权限被拒，
+z-order 已经改了），既抢用户窗口层级，又挡不住任何置顶窗口；`GDI` 在 Chromium 上直接全黑；
+`DXGI_*` 在部分集显上被驱动拒绝。`Foreground` / `Background` 不是 ProjectInterface 认可的字符串，
+写进去会静默退化成 `DXGI_DesktopDup`，别照抄 MaaFramework 内部枚举名。
+
+### 坐标必须按抓帧尺寸标定
+
+`--app` 模式下 Chromium 把标题栏画在**客户区内部**，所以抓帧 1280×720 里：顶部约 31px 是标题栏，
+右侧 16px 是页面滚动条，底部 8px 留白，CSS 视口只有 1264×681。门户的「开始游戏」贴在页面右下角、
+登录框垂直居中，**y 随窗口高度浮动**，按某一次实测值卡死 roi 会在别的机器上整体错位。
+`Portal.json` 里这两个节点的 roi 因此取覆盖所在象限的宽松值，实测命中：
+「开始游戏」文本 (1124,678)-(1197,702)、「请输入手机号」(481,276)-(580,295)，score 0.9999。
+
+另一个坑：页面加载完成后，`SetWindowPos` 只能改宽度，高度会被页面的 min-content 顶回 1622px。
+所以客户区 1280×720 只能靠启动时的 `--window-size` 保证，事后补救不了。
+
+### 「截到的全是白图」多半不是截图方式的问题
+
+Modern Standby 把会话挂起或息屏后，`document.visibilityState` 变成 `hidden`，Chromium 直接停止绘制，
+此时**任何**窗口截图方式拿到的都是白帧，看起来像截图方法坏了。排查顺序：先看桌面时钟是否还走，
+再用 CDP（`--remote-debugging-port`）读 `visibilityState`。后台长跑前记得
+`SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED)`。
+
+### FramePool 修好了识别，但输入仍然要求窗口在最前
+
+`Seize` 鼠标/键盘走的是 `SendInput` 绝对屏幕坐标，**不是**按 HWND 投递消息：日志里
+`SeizeInput::touch_down [x=1179][y=688][point.x=1187][point.y=688][hwnd_=true]` 的 `point`
+就是屏幕坐标，谁的 z-order 压在这个点上，点击就落在谁身上。MaaFramework 只在两处主动抢前台
+（扫 `MaaWin32ControlUnit.dll` 的字符串只剩这两条）：`ScreenDCScreencap` 抓帧前、
+`InterceptionInput` 键盘注入前；ProjectInterface 的 `win32` 块也只有
+`class_regex` / `window_regex` / `screencap` / `mouse` / `keyboard` 五个键（`MaaPiCli.exe` 里的
+`win32_config.*` 字符串同样只有这些），没有任何置顶选项。
+
+于是换到 `FramePool` 之后出现了一个反直觉的组合：抓帧不再需要前台，被遮挡也能识别成功，
+`Node.Action.Succeeded` 照样报绿，但点击其实打进遮挡它的那个窗口。用 `ScreenDC` 时每次抓帧顺带的
+z-order 提升把这个差异盖住了。pretask `CloudBrowserLaunch` 只在启动时 `ShowWindow(swRestore)` +
+`SetForegroundWindow` 一次，任务跑起来之后不会有第二次。
+
+结论：**任务运行期间门户窗口必须保持前台且不被遮挡。** 需要自动化保证的话，只能由调用方
+（GUI / pretask）在动作前重新置顶门户；设成 `HWND_TOPMOST` 最稳但会压住用户所有窗口，
+不适合作为默认行为。
+
+### 门户页会假命中桌面端标题页节点
+
+真机端到端跑生产 `OpenGame` 链时，`EnterGameResourceInitializeCompleteText` 命中了登录弹窗里的
+「已同意《用户注册协议》…」（box `[465,403,368,17]`），`EnterGameRecognition` 的模板匹配在 12+ CADPA
+角标上拿到 0.427 的候选（box `[1183,29,31,32]`，低于阈值才算失败）。两者只是整条 `And` 未成立，
+才没抢走执行权——这条 `next` 的顺序是脆弱的，改动 `OpenGame.next` 或调低这些节点阈值之前，
+先在门户页回归一遍。
+
+### 用 stock MaaPiCli 手动验证的注意点
+
+MaaEnd 生产 `interface.json` 加载不进 v5.14.3 的 `MaaPiCli.exe`：
+`Parser::parse_import_data json is not a valid ImportData [error_key=option]`，来自
+`assets/tasks/setting/Keymap.json` 的 `"type": "hotkey"` + `hotkeys` 自定义 option，最终
+`Failed to parse interface.json`。手动验证时另写一份不含 `import`、只挂
+`["./resource", "./resource_cloud_browser"]` 与 `CloudBrowserOpenGame`（`entry: "OpenGame"`）
+的最小 interface 即可复现同一条链路。
+
