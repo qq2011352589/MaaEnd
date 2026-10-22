@@ -1,0 +1,157 @@
+name: sync-upstream
+
+on:
+  schedule:
+    # 每天 UTC 20:00（北京时间 04:00）同步一次上游
+    - cron: "0 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: MaaEnd/MaaEnd
+  UPSTREAM_TESTSET: https://github.com/MaaEnd/MaaEndTestset.git
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout v2
+        uses: actions/checkout@v6
+        with:
+          ref: v2
+          fetch-depth: 0
+          submodules: recursive
+          # 私有测试集子模块需要跨仓库凭据；该 token 也用于推送 v2 与测试集
+          token: ${{ secrets.CI_SUBMODULE_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      # 合并上游需要完整的子模块历史；checkout 出来的子模块可能是浅克隆，
+      # 浅边界会被 thin pack 当成远端已存在的对象，导致推送被拒
+      - name: Sync testset submodule
+        id: testset
+        env:
+          TOKEN: ${{ secrets.CI_SUBMODULE_TOKEN }}
+        run: |
+          cd tests/MaaEndTestset
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+          git switch -C main origin/main
+          if [[ "$(git rev-parse --is-shallow-repository)" == "true" ]]; then
+            git fetch --unshallow origin
+          fi
+
+          git fetch "$UPSTREAM_TESTSET" main
+          if ! git merge --no-edit FETCH_HEAD; then
+            git diff --name-only --diff-filter=U > "$RUNNER_TEMP/sync-conflicts.txt"
+            git merge --abort
+            echo "::error::测试集子模块合并上游时冲突"
+            exit 1
+          fi
+
+          # 凭据从环境变量读取，避免 token 出现在命令行参数里
+          git -c credential.helper='!f() { echo username=x-access-token; echo "password=$TOKEN"; }; f' \
+            push origin main
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit testset pointer
+        id: pointer
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          changed=false
+          if [[ "$(git -C tests/MaaEndTestset rev-parse HEAD)" != "$(git rev-parse :tests/MaaEndTestset)" ]]; then
+            git add tests/MaaEndTestset
+            git commit -m "chore: 同步测试集子模块 [skip ci]"
+            changed=true
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream v2
+        id: merge
+        run: |
+          git fetch "https://github.com/$UPSTREAM_REPO.git" v2
+
+          before=$(git rev-parse HEAD)
+          if ! git merge -m "chore: 自动同步上游 v2 $(date -u +%F) [skip ci]" FETCH_HEAD; then
+            conflicts=$(git diff --name-only --diff-filter=U)
+            # 测试集指针由上一步统一更新，其余冲突必须人工处理
+            if [[ "$conflicts" != "tests/MaaEndTestset" ]]; then
+              printf '%s\n' "$conflicts" > "$RUNNER_TEMP/sync-conflicts.txt"
+              git merge --abort
+              echo "::error::上游合并冲突，需要人工处理"
+              exit 1
+            fi
+            git add tests/MaaEndTestset
+            git commit -m "chore: 自动同步上游 v2 $(date -u +%F) [skip ci]"
+          fi
+
+          after=$(git rev-parse HEAD)
+          changed=false
+          if [[ "$after" != "$before" ]]; then
+            changed=true
+          fi
+          if [[ "${{ steps.pointer.outputs.changed }}" == "true" ]]; then
+            changed=true
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      # 与仓库现有 CI 保持同一套校验；失败则不推送
+      - name: Install dependencies
+        if: steps.merge.outputs.changed == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Run maa-tools check
+        if: steps.merge.outputs.changed == 'true'
+        run: pnpm check
+
+      - name: Run maa-tools test
+        if: steps.merge.outputs.changed == 'true'
+        run: pnpm test
+
+      - name: Push v2
+        if: steps.merge.outputs.changed == 'true'
+        run: git push origin HEAD:v2
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          UPSTREAM_SHA: ${{ github.sha }}
+        run: |
+          gh label create upstream-sync --color FBCA04 --description "上游自动同步" 2>/dev/null || true
+
+          body="自动同步上游 v2 失败，请人工检查。"$'\n\n'
+          body+="- 运行记录：$RUN_URL"$'\n'
+          body+="- 触发提交：$UPSTREAM_SHA"$'\n'
+          if [[ -f "$RUNNER_TEMP/sync-conflicts.txt" ]]; then
+            body+=$'\n'"冲突文件："$'\n\n'"\`\`\`"$'\n'
+            body+=$(cat "$RUNNER_TEMP/sync-conflicts.txt")$'\n'"\`\`\`"$'\n'
+          fi
+          body+=$'\n'"v2 未推送；测试集子模块可能已更新。请确认后手动解决冲突并更新 \`tests/MaaEndTestset\` 指针。"
+
+          existing=$(gh issue list --label upstream-sync --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "[upstream-sync] 自动同步失败 $(date -u +%F)" --label upstream-sync --body "$body"
+          fi
