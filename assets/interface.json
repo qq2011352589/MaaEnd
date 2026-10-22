@@ -69,9 +69,12 @@
                 "class_regex": "Chrome_WidgetWin_1",
                 // pretask CloudBrowserLaunch 以 --app= 打开门户，窗口标题即页面标题《云·终末地》官方网站
                 "window_regex": "云·终末地",
-                // ScreenDC 走 GDI BitBlt，Chromium 由 GPU 合成，个别机器上会截到黑帧；
-                // 若识别全部失败改试 FramePool 或 DXGI_DesktopDup_Window
-                "screencap": "ScreenDC",
+                // FramePool（Windows.Graphics.Capture 抓窗口帧）：2026-10-23 真机验证，窗口被其他窗口遮挡、
+                // 不在前台时仍能拿到完整页面，且不会动窗口 z-order。
+                // 不要用 ScreenDC：它抓的是屏幕像素，每次识别前都要把门户提到最上层（抢用户 z-order），
+                // 一旦有置顶窗口（任务管理器、录屏/输入法浮层）就会把遮挡物一起截进来导致识别全丢；
+                // GDI 在 Chromium 上直接全黑，DXGI_DesktopDup(_Window) 在部分集显上 DuplicateOutput 返回 E_ACCESSDENIED。
+                "screencap": "FramePool",
                 // Seize 移动真实光标、发送真实按键，页面里的 WebRTC 输入与鼠标视角才拿得到事件
                 "mouse": "Seize",
                 "keyboard": "Seize"
@@ -92,7 +95,8 @@
             "win32": {
                 "class_regex": "Chrome_WidgetWin_1",
                 "window_regex": "云·终末地",
-                "screencap": "ScreenDC",
+                // 同 CloudBrowser：Chromium 窗口一律用 FramePool，理由见上面的注释
+                "screencap": "FramePool",
                 "mouse": "Seize",
                 "keyboard": "Seize"
             },
@@ -117,7 +121,8 @@
             "win32": {
                 "class_regex": "Chrome_WidgetWin_1",
                 "window_regex": "云·终末地",
-                "screencap": "ScreenDC",
+                // 同 CloudBrowser：Chromium 窗口一律用 FramePool，理由见上面的注释
+                "screencap": "FramePool",
                 "mouse": "Seize",
                 "keyboard": "Seize"
             },
