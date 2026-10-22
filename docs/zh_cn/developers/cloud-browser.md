@@ -49,6 +49,11 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
 电脑版用桌面 `resource`，手机版叠加 `resource_adb`。`CloudBrowser`（外置）仍只面向桌面端，
 其 pretask 不会在 MaaFwApp 中执行。
 
+内嵌方案尚未在真机上跑通。首次测试按这个顺序：设置页登录 → 选 `CloudBrowserPC` 跑
+`CloudBrowserOpenGame` → 看日志里 controller 是否连上虚拟屏、门户 OCR 是否命中、
+鼠标点击能否让页面进入排队；手机版再切 `CloudBrowserMobile` 验证触摸注入与
+`resource_adb` 的标题页识别。
+
 ## 三条硬约束
 
 这三条是踩出来的，不满足就整条链路失效，改动 `agent/go-service/pretask/cloudbrowser/` 前请先读完。

@@ -58,6 +58,12 @@ resources follow the cloud platform: PC uses the desktop `resource`, mobile also
 `resource_adb`. `CloudBrowser` (external) remains desktop-only, and its pretask does not run in
 MaaFwApp.
 
+The embedded path has not been verified on a real device yet. For the first run, sign in from
+Settings, pick `CloudBrowserPC` and run `CloudBrowserOpenGame`, then check the log for controller
+connection to the virtual display, portal OCR hits and whether injected mouse clicks move the
+page into the queue; then switch to `CloudBrowserMobile` to verify touch injection and title
+recognition against `resource_adb`.
+
 ## Three hard constraints
 
 These were learned the hard way; the whole chain breaks without them. Read this before touching
