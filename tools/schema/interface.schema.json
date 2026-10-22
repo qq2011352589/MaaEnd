@@ -584,6 +584,28 @@
                         "type": "string"
                     }
                 },
+                "embedded_browser": {
+                    "type": "object",
+                    "title": "内嵌浏览器标记（MaaFwApp）",
+                    "description": "MaaFwApp 专用。声明后该控制器改在应用内虚拟屏 WebView 里打开云门户，桌面端忽略此字段；type 仍为 Win32 以满足 PI 协议",
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "title": "云平台",
+                            "description": "pc 表示门户点击选择电脑版云实例，mobile 表示手机版",
+                            "enum": [
+                                "pc",
+                                "mobile"
+                            ]
+                        },
+                        "url": {
+                            "type": "string",
+                            "title": "门户地址",
+                            "description": "可选。覆盖默认的云·终末地门户地址"
+                        }
+                    },
+                    "additionalProperties": false
+                },
                 "adb": {
                     "type": "object",
                     "title": "Adb 控制器配置",
