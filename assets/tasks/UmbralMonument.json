@@ -10,7 +10,8 @@
             ],
             "controller": [
                 "Win32-Front",
-                "CloudBrowser"
+                "CloudBrowser",
+                "CloudBrowserPC"
             ],
             "pipeline_override": {
                 "AutoFight": {

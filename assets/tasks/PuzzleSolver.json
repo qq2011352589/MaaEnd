@@ -13,7 +13,8 @@
                 "Linux-Gamescope",
                 "Linux-ScreenCast",
                 "Linux-Wlroots",
-                "Win32-Front"
+                "Win32-Front",
+                "CloudBrowserPC"
             ],
             "option": [
                 "PuzzleSolverMode"

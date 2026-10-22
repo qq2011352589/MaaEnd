@@ -1,0 +1,39 @@
+{
+    // 手机版门户：同一页面按视口与 UA 换成竖屏布局，「开始游戏」与登录框都不在原 ROI 里。
+    // 手机云跑的是安卓客户端，游戏内的差异由 resource_adb 负责；这里只覆盖门户层。
+    "CloudBrowserPortalStartGame": {
+        "desc": "门户（手机版）：点击开始游戏",
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                // 手机版布局随安全区与地址栏变化，整帧找文案，别沿用桌面版坐标
+                "roi": [
+                    0,
+                    0,
+                    0,
+                    0
+                ],
+                "expected": [
+                    "开始游戏"
+                ]
+            }
+        }
+    },
+    "CloudBrowserPortalLoginModal": {
+        "desc": "门户（手机版）：鹰角登录框仍在，会话已失效",
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                "roi": [
+                    0,
+                    0,
+                    0,
+                    0
+                ],
+                "expected": [
+                    "请输入手机号"
+                ]
+            }
+        }
+    }
+}

@@ -14,7 +14,9 @@
                 "Linux-Wlroots",
                 "Win32-Front",
                 "ADB",
-                "PlayCover"
+                "PlayCover",
+                "CloudBrowserPC",
+                "CloudBrowserMobile"
             ],
             "option": [
                 "ZiplineImportClearLogin"
@@ -27,7 +29,9 @@
             "controller": [
                 "Win32-Front",
                 "ADB",
-                "PlayCover"
+                "PlayCover",
+                "CloudBrowserPC",
+                "CloudBrowserMobile"
             ],
             "label": "$option.ZiplineImportClearLogin.label",
             "cases": [

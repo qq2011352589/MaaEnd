@@ -207,7 +207,9 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
-          persist-credentials: false
+          # MaaFwApp 换成私有 fork 后，默认 GITHUB_TOKEN 只覆盖本仓库，拉不到子模块
+          token: ${{ secrets.CI_SUBMODULE_TOKEN || github.token }}
+          persist-credentials: true
 
       - uses: astral-sh/setup-uv@v10.3.0
         with:

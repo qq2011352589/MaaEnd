@@ -9,7 +9,8 @@
                 "dijiang_ship"
             ],
             "controller": [
-                "Win32-Front"
+                "Win32-Front",
+                "CloudBrowserPC"
             ],
             "option": [
                 "BatchDeleteFriendsInactiveDays"

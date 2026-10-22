@@ -78,6 +78,54 @@
             }
         },
         {
+            // type 仍是标准 Win32：PI 协议没有浏览器类型，MaaPiCli 遇到未知 type 会拒绝整个 interface。
+            // embedded_browser 是 MaaFwApp 的扩展标记，桌面端忽略它，照旧按下面的 win32 配置抓 Chrome 窗口；
+            // MaaFwApp 看到标记则在虚拟屏里内嵌 WebView，不依赖外置浏览器
+            "name": "CloudBrowserPC",
+            "label": "$controller.CloudBrowserPC.label",
+            "description": "$controller.CloudBrowserPC.description",
+            "type": "Win32",
+            "permission_required": true,
+            "attach_resource_path": [
+                "./resource_cloud_browser"
+            ],
+            "win32": {
+                "class_regex": "Chrome_WidgetWin_1",
+                "window_regex": "云·终末地",
+                "screencap": "ScreenDC",
+                "mouse": "Seize",
+                "keyboard": "Seize"
+            },
+            "embedded_browser": {
+                // 同一个门户按「开始游戏」点击的 pointerType 选电脑/手机云平台，pc 模式注入原生鼠标事件
+                "mode": "pc"
+            }
+        },
+        {
+            // 手机云平台跑的是安卓客户端，所以叠加 resource_adb；
+            // 门户在手机版布局下按钮位置不同，由 resource_cloud_browser_mobile 覆盖
+            "name": "CloudBrowserMobile",
+            "label": "$controller.CloudBrowserMobile.label",
+            "description": "$controller.CloudBrowserMobile.description",
+            "type": "Win32",
+            "permission_required": true,
+            "attach_resource_path": [
+                "./resource_adb",
+                "./resource_cloud_browser",
+                "./resource_cloud_browser_mobile"
+            ],
+            "win32": {
+                "class_regex": "Chrome_WidgetWin_1",
+                "window_regex": "云·终末地",
+                "screencap": "ScreenDC",
+                "mouse": "Seize",
+                "keyboard": "Seize"
+            },
+            "embedded_browser": {
+                "mode": "mobile"
+            }
+        },
+        {
             "name": "PlayCover",
             "type": "PlayCover",
             "attach_resource_path": [

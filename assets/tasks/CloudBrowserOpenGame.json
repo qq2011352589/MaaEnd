@@ -9,7 +9,9 @@
                 "other_menu"
             ],
             "controller": [
-                "CloudBrowser"
+                "CloudBrowser",
+                "CloudBrowserPC",
+                "CloudBrowserMobile"
             ]
         }
     ]

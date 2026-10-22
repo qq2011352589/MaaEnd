@@ -15,7 +15,9 @@
                 "Linux-ScreenCast",
                 "Linux-Wlroots",
                 "PlayCover",
-                "Win32-Front"
+                "Win32-Front",
+                "CloudBrowserPC",
+                "CloudBrowserMobile"
             ],
             "pipeline_override": {
                 "AutoDeliveryDeliveryMissionNotFound": {

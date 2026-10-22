@@ -17,7 +17,9 @@
                 "MacOS-Background",
                 "MacOS-Front",
                 "PlayCover",
-                "Win32-Front"
+                "Win32-Front",
+                "CloudBrowserPC",
+                "CloudBrowserMobile"
             ],
             "option": [
                 "BatchUseDetectorRegion",

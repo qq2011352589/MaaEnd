@@ -13,7 +13,8 @@
                 "Linux-Wlroots",
                 "MacOS-Background",
                 "MacOS-Front",
-                "Win32-Front"
+                "Win32-Front",
+                "CloudBrowserPC"
             ],
             "option": [
                 "StashBackpackType"
