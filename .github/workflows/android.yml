@@ -217,7 +217,13 @@ jobs:
           cache-python: true
 
       - name: Initialize submodules
+        env:
+          SUBMODULE_TOKEN: ${{ secrets.CI_SUBMODULE_TOKEN || github.token }}
         run: |
+          # 子模块 clone 在新仓库目录里执行，不继承 checkout 写进父仓库的凭据，
+          # 私有 MaaFwApp 会报 could not read Username，只能改写 URL。
+          # 只改写这一个地址，避免令牌被带到其它公开子模块的鉴权里。
+          git config --global url."https://x-access-token:${SUBMODULE_TOKEN}@github.com/qq2011352589/MaaFwApp.git".insteadOf "https://github.com/qq2011352589/MaaFwApp.git"
           # 与上一行同理：MaaFwApp 的版本号由它自己的 gradle 在检出目录里跑
           # git describe 得到，浅克隆没有 tag 会退化成裸短哈希并原样进 Sentry
           # release，所以这个子模块要带完整历史和 tag；describe 只用提交图，
