@@ -20,6 +20,35 @@ ProjectInterface v2 的 `controller[].type` 没有浏览器这一类，所以 `C
 **任何需要把它和真实桌面客户端区分开的代码，必须比较控制器名而不是类型**，
 常量在 `pkg/pienv`：`pienv.ControllerNameCloudBrowser`。
 
+## Android 内嵌浏览器（MaaFwApp）
+
+MaaFwApp 另有两条不依赖外置浏览器的控制器，直接在应用内的虚拟屏 WebView 里打开门户：
+
+| 控制器 | 云平台 | 附加资源 |
+| --- | --- | --- |
+| `CloudBrowserPC` | 电脑版（云端跑 Windows 客户端） | `./resource_cloud_browser` |
+| `CloudBrowserMobile` | 手机版（云端跑安卓客户端） | `./resource_adb`、`./resource_cloud_browser`、`./resource_cloud_browser_mobile` |
+
+门户按「开始游戏」那次点击的 `pointerType` 选择云平台：鼠标 → 电脑版，触摸 → 手机版。
+pc 模式由 `InputControlUtils` 注入原生 `SOURCE_MOUSE` 事件（按下用 `WAIT_FOR_FINISH`，
+未按下移动发 `ACTION_HOVER_MOVE`，按住移动发 `ACTION_MOVE`），mobile 模式保持触摸注入。
+内嵌 Activity 把自己的密度固定为 160 dpi，使 1280×720 虚拟屏恰好对应 1280×720 CSS 像素，
+桌面版门户的 ROI 可以直接复用；手机版门户布局不同，`resource_cloud_browser_mobile` 把
+「开始游戏」与登录框改回整帧 OCR。
+
+PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interface），所以这两条仍声明为
+`Win32`，另带 `embedded_browser: { "mode": "pc" | "mobile" }` 标记。桌面端忽略该字段，照旧按
+`win32` 配置抓外置 Chrome 窗口；MaaFwApp 看到标记就改走内嵌 WebView。`embedded_browser`
+因此也是 MaaFwApp 判定「这条控制器能不能用」的依据，不要再按 type 判断。
+
+虚拟屏的 IME 是隐藏的，首次登录与短信验证码无法在虚拟屏里输入。MaaFwApp 设置页提供
+「登录云终末地」，在主屏用普通 WebView 打开同一门户；Cookie 与 localStorage 全应用共享，
+登录一次后虚拟屏里的门户即为已登录状态。
+
+内嵌浏览器复用同一套门户节点与 `OpenGame.next` 覆盖，游戏内资源按云平台选择：
+电脑版用桌面 `resource`，手机版叠加 `resource_adb`。`CloudBrowser`（外置）仍只面向桌面端，
+其 pretask 不会在 MaaFwApp 中执行。
+
 ## 三条硬约束
 
 这三条是踩出来的，不满足就整条链路失效，改动 `agent/go-service/pretask/cloudbrowser/` 前请先读完。
@@ -69,7 +98,6 @@ ProjectInterface v2 的 `controller[].type` 没有浏览器这一类，所以 `C
 `CloudEndfieldStartGame`（ROI `[887, 522, 393, 198]`）区域重叠，同一条 `next` 里会互相抢命中。
 
 进入游戏后的标题页仍然复用桌面端 `EnterGame`。
-
 
 ## 测试
 

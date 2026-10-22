@@ -22,6 +22,42 @@ ProjectInterface v2 has no browser `controller[].type`, so `CloudBrowser` borrow
 **Any code that must tell it apart from a real desktop client has to compare the controller name,
 not the type.** The constant lives in `pkg/pienv`: `pienv.ControllerNameCloudBrowser`.
 
+## Android embedded browser (MaaFwApp)
+
+MaaFwApp additionally provides two controllers that do not need an external browser; they open
+the portal in an in-app WebView on a virtual display:
+
+| Controller | Cloud platform | Attached resources |
+| --- | --- | --- |
+| `CloudBrowserPC` | PC (the cloud runs the Windows client) | `./resource_cloud_browser` |
+| `CloudBrowserMobile` | Mobile (the cloud runs the Android client) | `./resource_adb`, `./resource_cloud_browser`, `./resource_cloud_browser_mobile` |
+
+The portal picks the cloud platform from the `pointerType` of the "开始游戏" click: mouse → PC,
+touch → mobile. PC mode therefore injects native `SOURCE_MOUSE` events through
+`InputControlUtils` (down with `WAIT_FOR_FINISH`, unpressed movement as `ACTION_HOVER_MOVE`,
+pressed movement as `ACTION_MOVE`), while mobile mode keeps touch injection. The embedded
+Activity pins its density to 160 dpi so the 1280×720 virtual display maps to 1280×720 CSS
+pixels and the desktop portal ROIs still apply; the mobile portal layout differs, so
+`resource_cloud_browser_mobile` switches the "开始游戏" button and login form back to full-frame
+OCR.
+
+The PI protocol rejects unknown `controller[].type` values (MaaPiCli rejects the whole
+interface), so both controllers are still declared as `Win32` and carry an
+`embedded_browser: { "mode": "pc" | "mobile" }` marker. Desktop clients ignore the field and use
+the `win32` block to grab an external Chrome window; MaaFwApp switches to the embedded WebView
+when it sees the marker. The marker is therefore also how MaaFwApp decides whether a controller
+is usable — do not key that decision on the type.
+
+The virtual display hides the IME, so first-time login and SMS codes cannot be typed there.
+MaaFwApp's settings page offers "Sign in to Endfield Cloud", which opens the same portal in a
+normal WebView on the primary display; cookies and localStorage are shared application-wide, so
+after signing in once the portal inside the virtual display is already authenticated.
+
+The embedded browser reuses the same portal nodes and `OpenGame.next` override. In-game
+resources follow the cloud platform: PC uses the desktop `resource`, mobile also attaches
+`resource_adb`. `CloudBrowser` (external) remains desktop-only, and its pretask does not run in
+MaaFwApp.
+
 ## Three hard constraints
 
 These were learned the hard way; the whole chain breaks without them. Read this before touching
@@ -81,7 +117,6 @@ The reverse is also wrong: putting the portal nodes into the base `OpenGame` wou
 client) inside one `next` list.
 
 Once inside the game, the title screen still reuses the desktop `EnterGame`.
-
 
 ## Tests
 
