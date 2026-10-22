@@ -347,6 +347,13 @@ jobs:
           mv "$dir"/*.apk "$dir/$name.apk"
           echo "APK_PATH=$dir/$name.apk" >> "$GITHUB_ENV"
 
+      # release 包必须带签名，否则用户侧会报「缺少开发者证书」
+      - name: Verify APK signature
+        if: env.ASSEMBLE == 'release'
+        run: |
+          apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n1)
+          "$apksigner" verify --print-certs "$APK_PATH"
+
       - name: Check APK native libraries
         run: |
           IFS=, read -ra abis <<< "$ABIS"
