@@ -662,8 +662,6 @@ jobs:
       contents: read
       # git-cliff 读取 pulls 元数据需要该权限，否则私有仓库返回 403
       pull-requests: read
-    outputs:
-      release_body: ${{ steps.git-cliff.outputs.content }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -685,6 +683,21 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           # 私有仓库下 git-cliff 匿名读取 pulls/commits 会被 403，必须带 token
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 首版会包含完整历史，正文可能超过 Release 上限且无法塞进环境变量，截断后作为 artifact 传递
+      - name: Trim changelog
+        run: |
+          max=60000
+          if [ "$(wc -c < CHANGES.md)" -gt "$max" ]; then
+            head -c "$max" CHANGES.md > CHANGES.md.trim
+            printf '\n\n---\n\n（更新日志过长，仅保留前 %s 字节）\n' "$max" >> CHANGES.md.trim
+            mv CHANGES.md.trim CHANGES.md
+          fi
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: changelog
+          path: CHANGES.md
 
   # 正式版的 Android APK：与桌面包同一 tag、同一 MaaFramework 版本，一起进 Release
   android:
@@ -732,6 +745,11 @@ jobs:
           pattern: MaaEnd-android-*-release
           path: artifacts
 
+      - uses: actions/download-artifact@v7
+        with:
+          name: changelog
+          path: changelog
+
       - name: Prepare release artifacts
         run: |
           cd artifacts
@@ -766,10 +784,8 @@ jobs:
 
       # 正文 = 下载表 + 更新日志；下载表按 artifacts 里实际要上传的文件生成
       - name: Build release body
-        env:
-          CHANGELOG: ${{ needs.changelog.outputs.release_body }}
         run: |
-          printf '%s\n' "$CHANGELOG" > "$RUNNER_TEMP/changelog.md"
+          cp changelog/CHANGES.md "$RUNNER_TEMP/changelog.md"
           python3 .github/scripts/release_body.py \
             --artifacts artifacts \
             --tag "${{ needs.meta.outputs.tag }}" \
