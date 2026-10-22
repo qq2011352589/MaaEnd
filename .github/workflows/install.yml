@@ -78,9 +78,9 @@ jobs:
             tag="$prefix-ci.$suffix"
           fi
 
-          # 检查是否为预发布版本
+          # 检查是否为预发布版本；带后缀的 tag（如 v0.1.0-cloudbrowser）也按预发布处理
           is_prerelease=false
-          if [[ $tag =~ .*alpha.* || $tag =~ .*beta.* || $tag =~ .*rc.* || $tag =~ .*dev.* || $tag =~ .*-ci.* ]]; then
+          if [[ $tag =~ .*alpha.* || $tag =~ .*beta.* || $tag =~ .*rc.* || $tag =~ .*dev.* || $tag =~ .*-ci.* || $tag == *-* ]]; then
             is_prerelease=true
             echo "This is a pre-release version"
           fi
@@ -702,6 +702,9 @@ jobs:
     if: ${{ needs.meta.outputs.is_release == 'true' }}
     needs: [meta, package_linux_tarball, package_macos_dmg, package_win_zip, changelog, android]
     runs-on: ubuntu-latest
+    # 仓库默认 GITHUB_TOKEN 为只读，发布 Release 需要显式授予写权限
+    permissions:
+      contents: write
     steps:
       # 只取生成 Release 正文的脚本
       - uses: actions/checkout@v6
@@ -792,6 +795,8 @@ jobs:
           gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_release_note.yml -f tag=${{ needs.meta.outputs.tag }}
 
       - name: Send Discord release notification
+        # fork 没有上游的 Discord 通知工作流，跳过避免发布后报错
+        if: ${{ github.repository_owner == 'MaaEnd' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
