@@ -77,6 +77,13 @@ symptom. Read this before the first device run so a known gap is not debugged as
    the APK has no portal nodes at all, which looks exactly like "the controller connected but nothing
    is ever recognized" — indistinguishable from a broken screencap method. `resource_cloud_browser/**`
    and `resource_cloud_browser_mobile/**` are in `include` now.
+   When verifying, do not grep the APK's own file listing: the PI tree reaches the package as
+   `syncPiAssets` → `packPiArchive` → `assets/pi.zip` (loose assets get rewritten by AAPT), so
+   searching the APK entries for `resource_cloud_browser/` always returns 0 — a false negative.
+   Look at the "PI archive pi.zip … N entries" line from `packPiArchive`, or unpack `assets/pi.zip`
+   and inspect its root directories. Nothing to worry about on the install side:
+   `PiInstaller.unpackZip` lays out every root verbatim and only additionally requires a top-level
+   `interface.json`.
 2. **The coordinate basis differs from the external browser.** The external path captures the
    `--app` client area, where the captured 1280×720 frame carries about 31px of title bar on top and
    a 16px scrollbar on the right, leaving a 1264×681 CSS viewport. The embedded Activity pins
@@ -92,6 +99,11 @@ symptom. Read this before the first device run so a known gap is not debugged as
    `resource_adb`-first template layering. Telling them apart requires the controller name, and
    cpp-algo does not read `PI_CONTROLLER` today (the precedent for reading the environment is
    `PI_CLIENT_LANGUAGE` in `notice.cpp`).
+   One more thing that bites while implementing: the type lookup exists twice.
+   `DetectControllerType(MaaController*)` in `MapNavigator/controller_info_utils.cpp` is reused by
+   `GameRegion.cpp`, `Backend/backend.cpp` and `position_provider.cpp`, while `MapLocateAction.cpp`
+   carries a local namesake that calls `MaaControllerGetInfo` and re-parses the JSON itself. A
+   name-based fix has to cover both, otherwise the minimap ROI keeps switching on the type.
 4. **Frame stabilization missed the embedded controllers (now fixed).** `shouldRunScreenshotStable()`
    in `scenemanager/screenshotstable.go` used to accept only `Win32-Front` and
    `pienv.ControllerNameCloudBrowser`, leaving `CloudBrowserPC` and `CloudBrowserMobile` out. Cloud

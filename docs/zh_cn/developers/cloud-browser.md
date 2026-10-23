@@ -65,6 +65,11 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
    门户 overlay 没进 `include` 时 APK 里根本没有门户节点，症状是「控制器连上了、什么也识别不到」，
    和截图方式坏了长得一模一样。现在 `resource_cloud_browser/**` 与 `resource_cloud_browser_mobile/**`
    已在 `include` 里。
+   验收时别直接翻 APK 的文件清单：PI 树是 `syncPiAssets` → `packPiArchive` 打成
+   `assets/pi.zip` 再塞进去的（松散 asset 会被 AAPT 改名），所以按 `resource_cloud_browser/` 搜 APK
+   条目永远是 0，是个假阴性。要看的是 `packPiArchive` 打的「PI archive pi.zip … N entries」那行，
+   或把 `assets/pi.zip` 解出来看它的根级目录。解包侧不用操心：`PiInstaller.unpackZip`
+   按条目名原样铺开每一棵根目录，只额外要求顶层有 `interface.json`。
 2. **坐标系基准和外置浏览器不同。** 外置那条截的是 `--app` 窗口客户区，抓帧 1280×720 中顶部约 31px 是
    标题栏、右侧 16px 是滚动条，CSS 视口实际只有 1264×681；内嵌 Activity 把 densityDpi 钉在 160，
    虚拟屏 1280×720 就是干净的 1280×720 CSS 视口。`Portal.json` 里贴右下角的「开始游戏」与垂直居中的
@@ -75,6 +80,11 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
    `MaaControllerGetInfo().type`——在手机上就是 `native_android`。于是跑着 Windows 客户端、桌面布局的
    `CloudBrowserPC` 也会拿到 `resource_adb` 优先的模板层次。要区分只能比较控制器名，而 cpp-algo 目前
    没有读 `PI_CONTROLLER`（读环境变量的先例是 `notice.cpp` 里的 `PI_CLIENT_LANGUAGE`）。
+   另一点动手时会踩到：读类型的代码有两份。`MapNavigator/controller_info_utils.cpp` 的
+   `DetectControllerType(MaaController*)` 被 `GameRegion.cpp`、`Backend/backend.cpp`、
+   `position_provider.cpp` 复用，而 `MapLocateAction.cpp` 里有一份同名的本地副本，自己走
+   `MaaControllerGetInfo` 再解析一次 JSON。按名字改写时两处都要覆盖，只改共享那份会留下小地图 ROI
+   仍在按类型判定。
 4. **画面稳定检测过去漏掉内嵌两条（已修）。** `scenemanager/screenshotstable.go` 的
    `shouldRunScreenshotStable()` 以前只认 `Win32-Front` 与 `pienv.ControllerNameCloudBrowser`，
    `CloudBrowserPC` / `CloudBrowserMobile` 不在名单里。云游戏有黑场首帧和加载帧，漏掉就意味着依赖
