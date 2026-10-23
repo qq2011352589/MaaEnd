@@ -10,20 +10,34 @@
     // 网页云里跑的其实是国服 Windows 客户端，所以游戏内标题页直接复用桌面端的 EnterGame。
     "OpenGame": {
         "desc": "云浏览器：从门户进入游戏",
+        // 门户节点一律用 [JumpBack]：点了「开始游戏」不等于进了游戏，页面还要经过排队与加载，
+        // 之后才轮到游戏内标题页（EnterGame）。不带跳回就是终点节点，任务当场报成功，
+        // 后面发生什么再也没人看——2026-10-23 内嵌真机实测：17:53 那轮 CloudBrowserPortalStartGame
+        // 命中 (1045,660,108,32) 并点了 (1111,678)，Tasker.Task.Succeeded 收尾，而任务结束后抓的
+        // 虚拟屏（1280x720）上是鹰角登录框盖在门户上、右下角那颗「开始游戏」还原样露着。
+        // 也就是说登录框是点出来的，不是点之前就有的：同一轮里 CloudBrowserOpenGameFailed
+        // 排在前面却识别失败（17:53:4x，节点事件 32443 Failed / 32459 Succeeded），下一帧才弹窗。
+        // 所以光把失败分支挪到前面还不够，必须跳回继续轮询，才能在弹窗出现的那一轮判掉。
+        // 与基础链路里 [JumpBack]CloudEndfieldStartGame 同一口径。
         "next": [
             "EnterGame",
             "[JumpBack]EnterGameResourceInitializeComplete",
             "[JumpBack]EnterGameRecognition",
-            "CloudBrowserPortalStartGame",
-            "CloudBrowserSpeedtestFailed",
-            "CloudBrowserNetworkAbnormal",
-            "CloudBrowserPortalReconnecting",
-            "CloudBrowserOpenGameFailed"
+            // 仍要排在 CloudBrowserPortalStartGame 之前：会话已失效时登录框会在点之前就盖在页面上，
+            // 底下那颗「开始游戏」照样整颗露在右下象限，OCR 命中后点在遮罩上，白点一次。
+            "CloudBrowserOpenGameFailed",
+            "[JumpBack]CloudBrowserPortalStartGame",
+            "[JumpBack]CloudBrowserSpeedtestFailed",
+            "[JumpBack]CloudBrowserNetworkAbnormal",
+            "[JumpBack]CloudBrowserPortalReconnecting"
         ]
     },
     "CloudBrowserOpenGameFailed": {
         // 会话失效时门户会退回鹰角登录框；浏览器窗口没打开或被遮挡时什么也识别不到。
         // 两者都不是自动流程能解决的，直接判定失败，避免对着登录框空转到超时。
+        // 内嵌浏览器里登录只能由人来做：任务页那张预览镜像的就是虚拟屏，触摸按同一条注入通路投进去
+        // （鼠标模式下要先把预览的槽位压回 contact 0，见 InputControlUtils.previewContact），
+        // 登录一次后 cookie 落在应用私有目录 app_webview/，后续跑图不必再登。
         "desc": "云浏览器：无法从门户进入游戏",
         "recognition": {
             "type": "Or",

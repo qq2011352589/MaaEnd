@@ -14,6 +14,14 @@
             ]
         },
         {
+            "name": "内嵌浏览器未登录：同一弹窗在虚拟屏上的排版比桌面偏左上",
+            "image": "云浏览器_门户_内嵌登录弹窗.png",
+            "hits": [
+                "CloudBrowserPortalStartGame",
+                "CloudBrowserPortalLoginModal"
+            ]
+        },
+        {
             "name": "登录弹窗已关闭：只剩开始游戏按钮",
             "image": "云浏览器_门户_开始游戏.png",
             "hits": [

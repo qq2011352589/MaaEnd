@@ -32,9 +32,11 @@ MaaFwApp 另有两条不依赖外置浏览器的控制器，直接在应用内�
 门户按「开始游戏」那次点击的 `pointerType` 选择云平台：鼠标 → 电脑版，触摸 → 手机版。
 pc 模式由 `InputControlUtils` 注入原生 `SOURCE_MOUSE` 事件（按下用 `WAIT_FOR_FINISH`，
 未按下移动发 `ACTION_HOVER_MOVE`，按住移动发 `ACTION_MOVE`），mobile 模式保持触摸注入。
-内嵌 Activity 把自己的密度固定为 160 dpi，使 1280×720 虚拟屏恰好对应 1280×720 CSS 像素，
-桌面版门户的 ROI 可以直接复用；手机版门户布局不同，`resource_cloud_browser_mobile` 把
-「开始游戏」与登录框改回整帧 OCR。
+内嵌 Activity 用 `config.densityDpi = DisplayMetrics.DENSITY_DEFAULT`（`CloudBrowserActivity.kt`）把
+**Activity 的配置密度**压到 160，使 1280×720 虚拟屏对应 1280×720 CSS 像素，桌面版门户的 ROI 可以直接
+复用。注意虚拟屏本身的 `densityDpi` 仍是手机的 240（`adb shell dumpsys display` 里看到的就是这个值），
+被覆盖的只是 Activity 那一份 Configuration——按「虚拟屏密度=160」去查会查不到，别把这个数写进断言。
+手机版门户布局不同，`resource_cloud_browser_mobile` 把「开始游戏」与登录框改回整帧 OCR。
 
 同名节点是**按字段合并**而不是整节点替换（MaaFramework 多资源目录语义，仓库里的先例：
 `resource_linux/pipeline/GameLauncher.json` 只重写 `next`，识别与 `action` 都沿用基础节点）。
@@ -54,11 +56,13 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
 电脑版用桌面 `resource`，手机版叠加 `resource_adb`。`CloudBrowser`（外置）仍只面向桌面端，
 其 pretask 不会在 MaaFwApp 中执行。
 
-内嵌方案尚未在真机上跑通，已知缺口见下两节。
+内嵌方案已在真机跑通门户层（详见「内嵌真机首测结果」）：`CloudBrowserPC` 连上虚拟屏、命中
+`CloudBrowserPortalStartGame`、由应用自己注入的鼠标点击打开鹰角登录弹窗。登录弹窗之后的链路仍未验证。
 
 ### 内嵌路径的已知缺口
 
-下面每一条都是读源码核对出来的，各自对应一种具体症状。首测前先过一眼，别把已知问题当新 bug 排查。
+下面每一条都读源码核对过，各自对应一种具体症状；已修或已实测的条目带着实测数字。
+排查内嵌问题时先过一眼，别把已知问题当新 bug。
 
 1. **打包配方会静默漏掉门户资源。** `Android/MaaFwApp/INTEGRATION.md` 的默认 include 本来覆盖
    `resource_*/**`，但 `Android/profile.yaml` 一旦显式写出 `include`，默认规则就整条被替换。
@@ -70,10 +74,12 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
    条目永远是 0，是个假阴性。要看的是 `packPiArchive` 打的「PI archive pi.zip … N entries」那行，
    或把 `assets/pi.zip` 解出来看它的根级目录。解包侧不用操心：`PiInstaller.unpackZip`
    按条目名原样铺开每一棵根目录，只额外要求顶层有 `interface.json`。
-2. **坐标系基准和外置浏览器不同。** 外置那条截的是 `--app` 窗口客户区，抓帧 1280×720 中顶部约 31px 是
-   标题栏、右侧 16px 是滚动条，CSS 视口实际只有 1264×681；内嵌 Activity 把 densityDpi 钉在 160，
-   虚拟屏 1280×720 就是干净的 1280×720 CSS 视口。`Portal.json` 里贴右下角的「开始游戏」与垂直居中的
-   登录框按前者标定，虽然取的是覆盖所在象限的宽松值，内嵌这条仍要在真机回归一遍。
+2. **坐标系基准和外置浏览器不同（已实测，节点命中）。** 外置那条截的是 `--app` 窗口客户区，抓帧 1280×720 中顶部约 31px 是
+   标题栏、右侧 16px 是滚动条，CSS 视口实际只有 1264×681；内嵌 Activity 的 `config.densityDpi` 钉在 160，
+   虚拟屏 1280×720 就是干净的 1280×720 CSS 视口。2026-10-23 内嵌真机实测：「开始游戏」文本框
+   (1045,660)-(1153,692)，落在原 roi 内、不需要按 density 折算；登录框「请输入手机号」却在 (402,211)-(549,239)，
+   旧 roi 左边界 420 切进「请」字导致整行检不出，`CloudBrowserPortalLoginModal` 的 roi 已放宽到
+   `[380,180,520,180]` 同时容纳桌面与内嵌两种几何。
 3. **cpp-algo 按控制器类型选资源根，内嵌两条会被当成安卓客户端。**
    `MapNavigator/controller_type_utils.h` 的 `ResourceImageRoots()` 只看类型，`native_android` 属于
    `kAdbLikeControllerTypes`，而 `MapLocateAction.cpp` 的 `DetectControllerType()` 读的是
@@ -101,20 +107,75 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
    `tools/i18n/sync_ocr_expected.py` 只扫 `resource` / `resource_adb` / `resource_cloud_adb` 三个 pipeline，
    两个门户 overlay 不在扫描路径里（门户文案跟客户端语言无关），节点已逐个标 `@i18n-skip`，
    将来真把 overlay 纳入扫描也不会把「开始游戏」按语言表展开。
+8. **内嵌鼠标注入点不动页面（已修）。** `InputControlUtils` 原本给 `ACTION_DOWN` 带上
+   `buttonState = BUTTON_PRIMARY`，Chromium 把它当成「按键状态同步」而不是点击，页面只收到 `mousemove`，
+   永远不派发 mousedown/mouseup/click——框架侧全是 `Delivered`，看起来像注入被吞。现已改为按下/抬起时
+   `buttonState = 0` 并用 `InputManager.setActionButton(event, BUTTON_PRIMARY)` 表达是哪颗键，
+   `ACTION_MOVE` 仍保留 `buttonState`（按住拖动时页面要能从 `buttons` 看出键还压着）。
+   逐字段的实测过程记在下面「注入字段的定位方法」一节。
+9. **门户节点是终点节点（已修）。** `OpenGame.next` 里不带 `[JumpBack]` 前缀的节点是终点：
+   命中并执行完 `action` 就 `Tasker.Task.Succeeded`，之后页面发生什么再也没有一帧被识别。
+   首版覆盖把 `CloudBrowserPortalStartGame` 与三个异常分支都写成了终点节点，所以「点击成功」之后
+   登录弹窗出现这件事根本没人看见。现在门户节点全部 `[JumpBack]`，只有 `CloudBrowserOpenGameFailed`
+   保持终点（判定失败就该收尾）。
 
-### 真机首测顺序
+### 内嵌真机首测结果
 
-1. 先在设置页登录门户（虚拟屏没有 IME，验证码只能在主屏 WebView 输），Cookie 共享后虚拟屏里即为已登录态。
+2026-10-23 在真机（MaaFwApp 本地出包并安装）跑通门户层，逐项对上上面的缺口：
+
+- **Activity 与虚拟屏。** `CloudBrowserActivity: mode=pc` 起在虚拟屏，投屏成功。虚拟屏 id 每轮都不同
+  （实测 4 → 6 → 7 → 8），任何脚本都不要把它当常量。
+- **门户识别。** `CloudBrowserPortalStartGame` 命中 (1045,660,108,32)；`CloudBrowserPortalLoginModal`
+  在放宽 roi 之后命中 (402,211)-(549,239)。这一帧已作为第 4 例进 `tests/CloudBrowser/test_portal.json`，
+  2026-10-24 离线用例矩阵跑通（见「测试」一节）。
+- **门户点击。** 应用自己注入的鼠标点击（走 `Win32` 那套 pc 模式通路）确实点开了鹰角登录弹窗，
+  随后 `CloudBrowserOpenGameFailed` 命中并 StopTask——这正是期望行为：虚拟屏没有 IME，登录只能人工做。
+- **预览镜像可点。** 任务页的全屏预览是唯一的交互入口（小卡片不转发触摸），映射为
+  `screen = (288 + 1.5·vx, 1.5·vy)`（虚拟屏 1280×720 按 1.5 倍缩放贴进竖屏，显示旋转为横屏），
+  三点标定核对过。修好缺口 8 之后连点 8 发的探针 8/8 命中，只有一次冷启动首帧落空。
+  预览的多指槽位会被 `RemoteServiceImpl` 传成非 0 contact，pc 模式必须经 `InputControlUtils.previewContact`
+  压回 0，否则 `SOURCE_MOUSE` 事件带不上指针。
+- **PI 资源更新踩点。** `PiInstaller.isCurrentInstall()` 只在 `versionCode` 变化时重新解包
+  （当前 3698），改资源不会自动生效。调 roi 时直接把单个 JSON 推进
+  `files/pi/resource_cloud_browser/pipeline/CloudBrowser/`，属主 `u0_a51:sdcard_rw`、权限 660；
+  正式回归仍要走重新出包。
+- **仍未验证。** 登录弹窗之后的一切：需要真实账号与短信验证码。因此缺口 5（手机版 `OpenGame.next`）
+  与缺口 6（`<video>` 画面几何）本轮拿不到数据，`CloudBrowserMobile` 整条也未测。
+
+### 注入字段的定位方法
+
+不重新出包也能逐个字段试注入，靠的是一个 `app_process` 注入台：`javac -bootclasspath android.jar` →
+`d8`（要先 `export JAVA_HOME` 且 `--output` 目录已存在）→ `jar` → `adb push /data/local/tmp` →
+`CLASSPATH=… app_process /system/bin Inj …`。`InputManager.injectInputEvent` + `InputEvent.setDisplayId`
+在 uid shell 与 uid root 下都可用；`InputManagerGlobal` 从 app_process 加载不到，得先
+`Looper.prepareMainLooper()` → `ActivityThread.systemMain()` → `getSystemContext()` →
+`getSystemService("input")`——和 MaaFwApp 里 `FakeContext` / `Workarounds.getSystemContext` 同一个套路。
+
+对弹窗上的 ✕ 逐字段二分，结论是：现状形状（`toolType=MOUSE` + `buttonState=PRIMARY`）不生效；
+只改 `buttonState=0` 生效；只改 `toolType=UNKNOWN` 生效；`buttonState=0` 且 `setActionButton(PRIMARY)`
+且保持 `toolType=MOUSE` 也生效——即最终采用的组合。`deviceId` 改成 -1 无效，
+单独往 `buttonState=PRIMARY` 上加 `actionButton` 也无效。adb 的 `input mouse` 之所以一直点得动，
+是因为它用的是 `MotionEvent.obtain(dt, et, action, x, y, metaState)` 简单工厂，`buttonState` 天生为 0
+（顺带一提 `toolType` 是 UNKNOWN、`deviceId` 是 -1）；`/system/bin/input` 是 `cmd input "$@"`，
+跑在 system_server 里（uid system），而 MaaFwApp 的注入发生在 `…:root_service`（uid shell）——
+差异在事件字段，不在调用者身份。排查这类「adb 能点、应用点不动」时先比字段，别再怀疑权限。
+
+### 后续回归顺序
+
+上面那轮已覆盖 1–4 步（Activity 起屏、门户命中、鼠标注入、roi 复核），剩下这些按序做：
+
+1. 拿到能登录的账号后，先在设置页登录门户（虚拟屏没有 IME，验证码只能在主屏 WebView 输），
+   Cookie 共享后虚拟屏里即为已登录态。
 2. 选 `CloudBrowserPC` 跑 `CloudBrowserOpenGame`，`adb logcat` 里 grep `CloudBrowserActivity: mode=`
    （创建时打的 `mode` / `display` / `url`）确认 Activity 起在预期虚拟屏。投不上时报的是
    「任务未出现在虚拟屏」，后面会带上 `presence` 与 app 侧 `appLaunch` 异常；`EmbeddedBrowserPresence`
    靠页面自报，因为 `getRunningTasks` 在部分 ROM 上看不见 `excludeFromRecents` 的任务。
-3. 这一轮只看门户层：controller 是否连上虚拟屏、`CloudBrowserPortalStartGame` 是否命中、鼠标注入能否让
-   页面进入排队。不要同时看游戏内识别，缺口 5、6 会污染结论。
-4. 用 `chrome://inspect` 或 logcat 里的尺寸核对 CSS 视口确实是 1280×720，再决定要不要重标 roi（缺口 2）。
-5. 拿到真实串流帧之后，才回归云端标题页能否被 `EnterGame` / `EnterGameRecognition` 命中。
-6. 手机版换 `CloudBrowserMobile`：先确认触摸注入有效、整帧 OCR 命中的是手机版布局，再考虑补
+3. 过掉登录弹窗之后再看云端标题页能否被 `EnterGame` / `EnterGameRecognition` 命中；
+   这一步同时量缺口 6（`<video>` 是否铺满、有没有黑边）。
+4. 手机版换 `CloudBrowserMobile`：先确认触摸注入有效、整帧 OCR 命中的是手机版布局，再补
    `OpenGame.next` 覆盖（缺口 5）。
+5. 按住拖动的语义（`ACTION_MOVE` 带 `buttonState` 能否让页面识别成拖拽）仍未实测，
+   需要一段页面上可拖的控件才能验。
 
 ## 四条硬约束
 
@@ -175,10 +236,18 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
 `tests/CloudBrowser/` + `tests/MaaEndTestset/CloudBrowser/Official_CN/`，控制器矩阵在
 `tests/scripts/loader.mts` 的 `controllerMap` 里注册。覆盖：
 
-- 门户未登录（登录弹窗 + 开始游戏同时在场）、弹窗关闭后只剩开始游戏、被顶号后的重连提示；
+- 门户未登录（登录弹窗 + 开始游戏同时在场）、**内嵌虚拟屏上的同一弹窗**（排版比桌面偏左上，
+  第 4 例用真机抓帧 `云浏览器_门户_内嵌登录弹窗.png`）、弹窗关闭后只剩开始游戏、被顶号后的重连提示；
 - 云端串流出的标题页能被桌面端 `EnterGame` / `EnterGameOCR` / `EnterGameRecognition` 命中，
   启动 logo 帧全不命中——即 H264 压缩与云侧叠加层（12+ CADPA、沪ICP 备案号、版本号、ms 角标）
   不影响游戏内识别。
+
+本机跑法与耗时（2026-10-24 实测）：`npm test` 要先让 maa-tools 联网 `preparing maafw`
+（download-scripts → download-binary → move-folders），这几步只打步骤名、不打进度，头两三分钟看着像挂死；
+本表 shell 里没有 `node`，要用随 Qoder 带的 Node：
+`ELECTRON_RUN_AS_NODE=1 "<Qoder CN.exe>" node_modules/@nekosu/maa-tools/bin/maa-tools test`。
+整套 1438 个用例约 18 分钟跑完，退出码 0、`tests/maatools/error_details.json` 没有生成，
+新增的内嵌帧用例（`云浏览器_门户_内嵌登录弹窗.png`）也在其中通过。
 
 ## 验证状态
 
@@ -192,9 +261,13 @@ Win32 控制器连上窗口、OCR 命中门户文本。因此前三条硬约束�
 `### All tasks have been completed ###`；不过那次点击的屏幕坐标正好压在用户窗口上（见下文
 「FramePool 修好了识别，但输入仍然要求窗口在最前」），所以只证明链路能跑，不证明云端真的开始排队。
 
-仍未验证的部分：已登录后的真实串流画面能否被桌面端 `EnterGame` 命中、进入游戏后标题是否仍含
-「云·终末地」（`window_regex`）、排队 / 时长耗尽 / 断线重连的自动恢复分支（尚未实现）、
-以及 MaaFwApp 内嵌 WebView 两条控制器。
+同日 2026-10-23 在真机上跑通了 MaaFwApp 内嵌浏览器的门户层：本地出包安装，`CloudBrowserPC` 起虚拟屏、
+命中「开始游戏」、应用自己注入的鼠标点击真把鹰角登录弹窗点了出来（修缺口 8 之前点不动）。
+细节与仍未验证的部分见「内嵌真机首测结果」。
+
+`CloudBrowserMobile` 至今没有真机数据。离线用例矩阵（`maa-tools test`，1438 例）2026-10-24 在本机全绿，
+含内嵌登录弹窗那一帧。其余仍未验证：已登录后的真实串流画面能否被桌面端 `EnterGame` 命中、
+进入游戏后标题是否仍含「云·终末地」（`window_regex`）、排队 / 时长耗尽 / 断线重连的自动恢复分支（尚未实现）。
 
 ### 截图方式怎么选
 
