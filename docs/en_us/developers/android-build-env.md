@@ -164,6 +164,62 @@ Your system only has an old CMake. See [1.2](#12-choose-a-cmake) for how to inst
 
 ---
 
+## 5. Extra traps on Windows ARM64
+
+> [!NOTE]
+>
+> This section only bites on ARM64 Windows (Snapdragon tablets, a few thin laptops); skip it on x64. Everything below was hit on a Snapdragon 8cx Gen 2 tablet on 2026-10-23.
+
+### Do not unzip with `Expand-Archive`
+
+Windows PowerShell 5.1's `Expand-Archive` stalls silently on the several-hundred-MB JDK / Go / Node archives (measured: 433 seconds of CPU without writing a single file). Use the built-in bsdtar instead — same archive, 2 seconds:
+
+```powershell
+& "$env:SystemRoot\System32\tar.exe" -xf $zip -C $dest
+```
+
+**Always the absolute path**: Git Bash puts its GNU `/usr/bin/tar` first on `PATH`, and that one treats `C:` as a remote host name, failing with `/usr/bin/tar: Cannot connect to C: resolve failed`.
+
+### The `cmdline-tools` archive needs a `latest` level added
+
+`commandlinetools-win-13114758_latest.zip` unpacks straight to `cmdline-tools\bin|lib` with no `latest` level, so `sdkmanager.bat` cannot be found. `sdkmanager` only runs from `<SDK>\cmdline-tools\latest\bin\sdkmanager.bat`, so move the unpacked `cmdline-tools` one level deeper.
+
+### `sdkmanager --licenses` needs enough `y` in one go
+
+It asks once per licence; piping a single `y` stops at `8 licenses not accepted` **with exit code 0**, and the following `--install` then skips every package, which looks like a successful install. Feed it generously:
+
+```powershell
+(1..40 | ForEach-Object { 'y' }) | & $sdkmanager --sdk_root=$sdk --licenses
+```
+
+### GitHub release downloads keep breaking
+
+`api.github.com` works all day, but `github.com/.../releases/download/...` (which lands on objects.githubusercontent.com) repeatedly gives `Could not connect` / `Connection was reset` / `handshake operation timed out`. `build_android_agents.py` caches the archive at `.cache/android-agents/<file name>` and **skips the download when that file exists**, so filling it with `curl -C -` is cheaper than rerunning the whole build:
+
+```bash
+curl.exe -sSL --fail -C - --retry 3 \
+  "https://github.com/MaaXYZ/MaaFramework/releases/download/<tag>/MAA-android-aarch64-<tag>.zip" \
+  -o .cache/android-agents/MAA-android-aarch64-<tag>.zip
+```
+
+> [!NOTE]
+>
+> A file the script left behind is a **truncated copy written from offset 0** (`download()` streams straight into `open(dest, "wb")`), so resuming with `-C -` is safe. If a partial file came from anywhere else, delete it first.
+
+### Keep `.ps1` files ASCII-only
+
+PowerShell 5.1 reads a UTF-8 script without BOM in the local code page, so Chinese comments become syntax errors (`意外的标记')'`). Either save as UTF-8 with BOM or write the comments in English.
+
+### `uv run` produces no output for ten-plus minutes
+
+`uv run tools/build_android_agents.py` can hang while resolving the environment or fetching packages. The script only uses the standard library, so calling uv's own interpreter directly is enough:
+
+```powershell
+& "$env:USERPROFILE\AppData\Roaming\uv\python\cpython-3.<version>-windows-aarch64-none\python.exe" tools\build_android_agents.py
+```
+
+---
+
 ## Related
 
 - [Android/README.md](../../../Android/README.md) — how to build, package and release once everything is installed

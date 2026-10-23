@@ -36,6 +36,11 @@ pc 模式由 `InputControlUtils` 注入原生 `SOURCE_MOUSE` 事件（按下用 
 桌面版门户的 ROI 可以直接复用；手机版门户布局不同，`resource_cloud_browser_mobile` 把
 「开始游戏」与登录框改回整帧 OCR。
 
+同名节点是**按字段合并**而不是整节点替换（MaaFramework 多资源目录语义，仓库里的先例：
+`resource_linux/pipeline/GameLauncher.json` 只重写 `next`，识别与 `action` 都沿用基础节点）。
+所以手机版那份只写 `roi` 与 `expected` 的覆盖仍然继承基础节点的 `"action": "Click"`，
+不必为了怕丢字段把整个节点抄一遍。
+
 PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interface），所以这两条仍声明为
 `Win32`，另带 `embedded_browser: { "mode": "pc" | "mobile" }` 标记。桌面端忽略该字段，照旧按
 `win32` 配置抓外置 Chrome 窗口；MaaFwApp 看到标记就改走内嵌 WebView。`embedded_browser`
@@ -49,10 +54,55 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
 电脑版用桌面 `resource`，手机版叠加 `resource_adb`。`CloudBrowser`（外置）仍只面向桌面端，
 其 pretask 不会在 MaaFwApp 中执行。
 
-内嵌方案尚未在真机上跑通。首次测试按这个顺序：设置页登录 → 选 `CloudBrowserPC` 跑
-`CloudBrowserOpenGame` → 看日志里 controller 是否连上虚拟屏、门户 OCR 是否命中、
-鼠标点击能否让页面进入排队；手机版再切 `CloudBrowserMobile` 验证触摸注入与
-`resource_adb` 的标题页识别。
+内嵌方案尚未在真机上跑通，已知缺口见下两节。
+
+### 内嵌路径的已知缺口
+
+下面每一条都是读源码核对出来的，各自对应一种具体症状。首测前先过一眼，别把已知问题当新 bug 排查。
+
+1. **打包配方会静默漏掉门户资源。** `Android/MaaFwApp/INTEGRATION.md` 的默认 include 本来覆盖
+   `resource_*/**`，但 `Android/profile.yaml` 一旦显式写出 `include`，默认规则就整条被替换。
+   门户 overlay 没进 `include` 时 APK 里根本没有门户节点，症状是「控制器连上了、什么也识别不到」，
+   和截图方式坏了长得一模一样。现在 `resource_cloud_browser/**` 与 `resource_cloud_browser_mobile/**`
+   已在 `include` 里。
+2. **坐标系基准和外置浏览器不同。** 外置那条截的是 `--app` 窗口客户区，抓帧 1280×720 中顶部约 31px 是
+   标题栏、右侧 16px 是滚动条，CSS 视口实际只有 1264×681；内嵌 Activity 把 densityDpi 钉在 160，
+   虚拟屏 1280×720 就是干净的 1280×720 CSS 视口。`Portal.json` 里贴右下角的「开始游戏」与垂直居中的
+   登录框按前者标定，虽然取的是覆盖所在象限的宽松值，内嵌这条仍要在真机回归一遍。
+3. **cpp-algo 按控制器类型选资源根，内嵌两条会被当成安卓客户端。**
+   `MapNavigator/controller_type_utils.h` 的 `ResourceImageRoots()` 只看类型，`native_android` 属于
+   `kAdbLikeControllerTypes`，而 `MapLocateAction.cpp` 的 `DetectControllerType()` 读的是
+   `MaaControllerGetInfo().type`——在手机上就是 `native_android`。于是跑着 Windows 客户端、桌面布局的
+   `CloudBrowserPC` 也会拿到 `resource_adb` 优先的模板层次。要区分只能比较控制器名，而 cpp-algo 目前
+   没有读 `PI_CONTROLLER`（读环境变量的先例是 `notice.cpp` 里的 `PI_CLIENT_LANGUAGE`）。
+4. **画面稳定检测不覆盖内嵌两条。** `scenemanager/screenshotstable.go` 的 `shouldRunScreenshotStable()`
+   只认 `Win32-Front` 与 `pienv.ControllerNameCloudBrowser`。云游戏有黑场首帧和加载帧，这条不补，
+   依赖稳定帧的节点会把没就绪的画面当有效画面用。
+5. **手机版缺 `OpenGame.next` 覆盖。** `resource_cloud_browser_mobile` 目前只覆盖了两个门户节点的 roi，
+   没有覆盖入口链，所以 `CloudBrowserMobile` 继承的是电脑版那条以 `EnterGame` 打头的桌面序列。
+   云安卓客户端进入游戏后的标题页本该走 `resource_adb`，`CloudEndfield*` 在当前配置下不可达。
+   补上覆盖之前，手机版只能验证「从门户点进去」，不能验证进入游戏之后的链路。
+6. **`<video>` 的画面几何未标定。** 门户里的云画面是页面内的一个 `<video>` 元素，而虚拟屏截的是整页
+   1280×720。画面是否正好铺满、有没有黑边，决定 `resource_adb` 的 720p roi 能不能直接用，只能真机测。
+7. **门户层有孤儿节点与缺失分支。** `CloudBrowserPortalLoggedIn`（`Portal.json`）没有任何节点或 `next`
+   引用它；排队、时长耗尽、断线重连只有识别、没有恢复分支。i18n 那边不算缺口但值得记一笔：
+   `tools/i18n/sync_ocr_expected.py` 只扫 `resource` / `resource_adb` / `resource_cloud_adb` 三个 pipeline，
+   两个门户 overlay 不在扫描路径里（门户文案跟客户端语言无关），节点已逐个标 `@i18n-skip`，
+   将来真把 overlay 纳入扫描也不会把「开始游戏」按语言表展开。
+
+### 真机首测顺序
+
+1. 先在设置页登录门户（虚拟屏没有 IME，验证码只能在主屏 WebView 输），Cookie 共享后虚拟屏里即为已登录态。
+2. 选 `CloudBrowserPC` 跑 `CloudBrowserOpenGame`，`adb logcat` 里 grep `CloudBrowserActivity: mode=`
+   （创建时打的 `mode` / `display` / `url`）确认 Activity 起在预期虚拟屏。投不上时报的是
+   「任务未出现在虚拟屏」，后面会带上 `presence` 与 app 侧 `appLaunch` 异常；`EmbeddedBrowserPresence`
+   靠页面自报，因为 `getRunningTasks` 在部分 ROM 上看不见 `excludeFromRecents` 的任务。
+3. 这一轮只看门户层：controller 是否连上虚拟屏、`CloudBrowserPortalStartGame` 是否命中、鼠标注入能否让
+   页面进入排队。不要同时看游戏内识别，缺口 5、6 会污染结论。
+4. 用 `chrome://inspect` 或 logcat 里的尺寸核对 CSS 视口确实是 1280×720，再决定要不要重标 roi（缺口 2）。
+5. 拿到真实串流帧之后，才回归云端标题页能否被 `EnterGame` / `EnterGameRecognition` 命中。
+6. 手机版换 `CloudBrowserMobile`：先确认触摸注入有效、整帧 OCR 命中的是手机版布局，再考虑补
+   `OpenGame.next` 覆盖（缺口 5）。
 
 ## 四条硬约束
 

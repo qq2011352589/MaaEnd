@@ -164,6 +164,62 @@ run: uv run tools/build_android_agents.py
 
 ---
 
+## 5. Windows ARM64 上的额外坑
+
+> [!NOTE]
+>
+> 这一段只在 ARM64 Windows（骁龙平板、部分轻薄本）上会遇到，x64 机器可以直接跳过。全部是 2026-10-23 在一台 Snapdragon 8cx Gen 2 平板上实测踩出来的。
+
+### 解压 zip 别用 `Expand-Archive`
+
+Windows PowerShell 5.1 的 `Expand-Archive` 解 JDK / Go / Node 这种几百 MB 的包会长时间零输出（实测烧了 433 秒 CPU 还没落第一个文件）。换系统自带的 bsdtar，同一份包 2 秒解完：
+
+```powershell
+& "$env:SystemRoot\System32\tar.exe" -xf $zip -C $dest
+```
+
+**一定要写绝对路径**：Git Bash 的 `/usr/bin/tar` 是 GNU tar，既排在 `PATH` 前面，又把 `C:` 当成远程主机名，报 `/usr/bin/tar: Cannot connect to C: resolve failed`。
+
+### `cmdline-tools` 解压后要自己补一层 `latest`
+
+`commandlinetools-win-13114758_latest.zip` 解出来直接是 `cmdline-tools\bin|lib`，没有 `latest` 这一层，于是 `sdkmanager.bat` 找不到。`sdkmanager` 只认 `<SDK>\cmdline-tools\latest\bin\sdkmanager.bat`，所以把解压出来的 `cmdline-tools` 再往里挪一层。
+
+### `sdkmanager --licenses` 要一次喂够 `y`
+
+它每个协议问一次，管道里只给一个 `y` 会停在 `8 licenses not accepted`，而且**退出码仍然是 0**；紧接着的 `--install` 于是把每个包都跳过，看起来像"装完了"。一次喂满：
+
+```powershell
+(1..40 | ForEach-Object { 'y' }) | & $sdkmanager --sdk_root=$sdk --licenses
+```
+
+### GitHub 的 release 下载老是断
+
+`api.github.com` 一直通，但 `github.com/.../releases/download/...`（实际落在 objects.githubusercontent.com）频繁 `Could not connect` / `Connection was reset` / `handshake operation timed out`。`build_android_agents.py` 把包缓存在 `.cache/android-agents/<包名>.zip`，**文件在就跳过下载**，所以用 `curl -C -` 把它灌满比重跑整条构建划算：
+
+```bash
+curl.exe -sSL --fail -C - --retry 3 \
+  "https://github.com/MaaXYZ/MaaFramework/releases/download/<tag>/MAA-android-aarch64-<tag>.zip" \
+  -o .cache/android-agents/MAA-android-aarch64-<tag>.zip
+```
+
+> [!NOTE]
+>
+> 脚本中断时留在缓存里的是**从头写的半截文件**（`download()` 直接 `open(dest, "wb")` 流式写），所以 `-C -` 续传是安全的。半截文件若是别处来的，先删干净再下。
+
+### 写 `.ps1` 就只用 ASCII
+
+5.1 读没有 BOM 的 UTF-8 脚本会按本地代码页解析，中文注释直接变成语法错误（`意外的标记')'`）。要么存成带 BOM 的 UTF-8，要么注释写英文。
+
+### `uv run` 十几分钟没输出
+
+`uv run tools/build_android_agents.py` 有可能卡在解析环境 / 拉包上。这个脚本只用标准库，直接调 uv 自带的那个 python 就行：
+
+```powershell
+& "$env:USERPROFILE\AppData\Roaming\uv\python\cpython-3.<版本>-windows-aarch64-none\python.exe" tools\build_android_agents.py
+```
+
+---
+
 ## 相关
 
 - [Android/README.md](../../../Android/README.md) —— 装完之后怎么构建、出包、发版

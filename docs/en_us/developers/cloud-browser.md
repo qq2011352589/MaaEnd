@@ -41,6 +41,12 @@ pixels and the desktop portal ROIs still apply; the mobile portal layout differs
 `resource_cloud_browser_mobile` switches the "开始游戏" button and login form back to full-frame
 OCR.
 
+Same-name nodes are merged **field by field**, not swapped wholesale (MaaFramework's multi-resource
+semantics; the in-repo precedent is `resource_linux/pipeline/GameLauncher.json`, which rewrites only
+`next` and keeps the base node's recognition and action). So the mobile overlay that carries only
+`roi` and `expected` still inherits the base node's `"action": "Click"` — there is no need to copy the
+whole node for fear of losing fields.
+
 The PI protocol rejects unknown `controller[].type` values (MaaPiCli rejects the whole
 interface), so both controllers are still declared as `Win32` and carry an
 `embedded_browser: { "mode": "pc" | "mobile" }` marker. Desktop clients ignore the field and use
@@ -58,11 +64,76 @@ resources follow the cloud platform: PC uses the desktop `resource`, mobile also
 `resource_adb`. `CloudBrowser` (external) remains desktop-only, and its pretask does not run in
 MaaFwApp.
 
-The embedded path has not been verified on a real device yet. For the first run, sign in from
-Settings, pick `CloudBrowserPC` and run `CloudBrowserOpenGame`, then check the log for controller
-connection to the virtual display, portal OCR hits and whether injected mouse clicks move the
-page into the queue; then switch to `CloudBrowserMobile` to verify touch injection and title
-recognition against `resource_adb`.
+The embedded path has not been verified on a real device yet; see the two sections below.
+
+### Known gaps on the embedded path
+
+Every item here was checked against the source, not guessed, and each one maps to a concrete
+symptom. Read this before the first device run so a known gap is not debugged as a new bug.
+
+1. **Packaging silently drops the portal resources.** The default include in
+   `Android/MaaFwApp/INTEGRATION.md` covers `resource_*/**`, but once `Android/profile.yaml` states
+   an explicit `include`, the default is replaced entirely. Without the portal overlays in that list
+   the APK has no portal nodes at all, which looks exactly like "the controller connected but nothing
+   is ever recognized" — indistinguishable from a broken screencap method. `resource_cloud_browser/**`
+   and `resource_cloud_browser_mobile/**` are in `include` now.
+2. **The coordinate basis differs from the external browser.** The external path captures the
+   `--app` client area, where the captured 1280×720 frame carries about 31px of title bar on top and
+   a 16px scrollbar on the right, leaving a 1264×681 CSS viewport. The embedded Activity pins
+   densityDpi to 160, so the 1280×720 virtual display is a clean 1280×720 CSS viewport. The bottom-right
+   "开始游戏" and the vertically centered login form in `Portal.json` were calibrated against the former;
+   their ROIs are deliberately loose quadrant values, but the embedded path still needs them re-checked
+   on device.
+3. **cpp-algo picks resource roots by controller type, so both embedded controllers look like an
+   Android client.** `ResourceImageRoots()` in `MapNavigator/controller_type_utils.h` only looks at the
+   type, `native_android` is in `kAdbLikeControllerTypes`, and `DetectControllerType()` in
+   `MapLocateAction.cpp` reads `MaaControllerGetInfo().type` — which is `native_android` on the phone.
+   So `CloudBrowserPC`, which streams a desktop-layout Windows client, still gets the
+   `resource_adb`-first template layering. Telling them apart requires the controller name, and
+   cpp-algo does not read `PI_CONTROLLER` today (the precedent for reading the environment is
+   `PI_CLIENT_LANGUAGE` in `notice.cpp`).
+4. **Frame stabilization does not cover the embedded controllers.** `shouldRunScreenshotStable()` in
+   `scenemanager/screenshotstable.go` only accepts `Win32-Front` and `pienv.ControllerNameCloudBrowser`.
+   Cloud gaming emits black first frames and loading frames, so anything relying on a stable frame can
+   consume a frame that is not ready yet.
+5. **Mobile is missing its `OpenGame.next` override.** `resource_cloud_browser_mobile` currently only
+   overrides the ROI of two portal nodes and never touches the entry chain, so `CloudBrowserMobile`
+   inherits the PC-mode desktop sequence that starts with `EnterGame`. The title page of the cloud
+   Android client should be reached through `resource_adb`, and `CloudEndfield*` is unreachable under
+   the current configuration. Until that override exists, mobile can only verify "clicked into the queue
+   from the portal", not anything after entering the game.
+6. **The `<video>` geometry is uncalibrated.** The streamed picture is a `<video>` element inside the
+   portal page, while the virtual display captures the whole 1280×720 page. Whether the picture fills
+   the viewport, and whether there are letterbox bars, decides whether the 720p ROIs of `resource_adb`
+   can be used as-is. That can only be measured on device.
+7. **Orphan nodes and missing branches in the portal layer.** Nothing references
+   `CloudBrowserPortalLoggedIn`, neither a node nor a `next`; queueing, exhausted playtime and
+   reconnecting are recognized but have no recovery branch. The i18n part is not a gap but is worth
+   recording: `tools/i18n/sync_ocr_expected.py` scans only the `resource`, `resource_adb` and
+   `resource_cloud_adb` pipelines, so neither portal overlay is in scope (portal wording does not
+   follow the client language), and every portal node now carries `@i18n-skip` so that adding the
+   overlays later cannot expand "开始游戏" through the language tables.
+
+### Ordering for the first device run
+
+1. Sign in from Settings first (the virtual display has no IME, so the SMS code can only be typed in
+   the ordinary WebView on the primary display); cookies are shared, so the portal inside the virtual
+   display is then already authenticated.
+2. Pick `CloudBrowserPC`, run `CloudBrowserOpenGame` and grep `adb logcat` for
+   `CloudBrowserActivity: mode=` (the `mode` / `display` / `url` line logged at creation) to confirm the
+   Activity really started on the expected virtual display. When it does not, the error is
+   "任务未出现在虚拟屏" and now carries `presence` plus the app-side `appLaunch` exception;
+   `EmbeddedBrowserPresence` relies on the page self-reporting because `getRunningTasks` cannot see
+   `excludeFromRecents` tasks on some ROMs.
+3. That run only covers the portal layer: did the controller attach to the virtual display, did
+   `CloudBrowserPortalStartGame` hit, did injected mouse clicks move the page into the queue. Do not judge
+   in-game recognition yet — gaps 5 and 6 would contaminate the conclusion.
+4. Confirm with `chrome://inspect` or the sizes in logcat that the CSS viewport really is 1280×720 before
+   deciding whether ROIs need recalibrating (gap 2).
+5. Only after a real streamed frame is on screen, re-check whether the streamed title page is hit by
+   `EnterGame` / `EnterGameRecognition`.
+6. For mobile, switch to `CloudBrowserMobile`: first prove touch injection works and that full-frame OCR
+   hits the mobile portal layout, then consider adding the `OpenGame.next` override (gap 5).
 
 ## Four hard constraints
 
