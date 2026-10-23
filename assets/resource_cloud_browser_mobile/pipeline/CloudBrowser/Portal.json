@@ -1,6 +1,8 @@
 {
     // 手机版门户：同一页面按视口与 UA 换成竖屏布局，「开始游戏」与登录框都不在原 ROI 里。
     // 手机云跑的是安卓客户端，游戏内的差异由 resource_adb 负责；这里只覆盖门户层。
+    // 只写 roi 与 expected 就够：同名节点按字段合并，基础节点的 "action": "Click" 会保留。
+    // 门户文案是页面自己的中文，不会随客户端语言变化，故每个 expected 都标 @i18n-skip。
     "CloudBrowserPortalStartGame": {
         "desc": "门户（手机版）：点击开始游戏",
         "recognition": {
@@ -14,6 +16,7 @@
                     0
                 ],
                 "expected": [
+                    // @i18n-skip
                     "开始游戏"
                 ]
             }
@@ -31,6 +34,7 @@
                     0
                 ],
                 "expected": [
+                    // @i18n-skip
                     "请输入手机号"
                 ]
             }

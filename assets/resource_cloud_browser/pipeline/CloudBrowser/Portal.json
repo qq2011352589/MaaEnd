@@ -3,7 +3,9 @@
     //
     // 门户是响应式 React SPA，同一元素在「未登录落地页」与「已登录账号面板」下位置不同，
     // 因此只给实测过坐标的节点写 roi，其余一律整帧 OCR，避免把未标定的坐标当成已标定。
-    // 门户 UI 只有国服中文，不存在多语言展开需求。
+    // 门户 UI 只有国服中文，不存在多语言展开需求。每个门户 OCR 节点的 expected 里都留一条 @i18n-skip：
+    // 这两个 overlay 现在不在 tools/i18n/sync_ocr_expected.py 的扫描路径里，但「开始游戏」这类文案
+    // 与游戏内文案同形，一旦将来把 overlay 加进扫描路径，没有标记就会被按语言表展开成四语。
     "CloudBrowserPortalStartGame": {
         "desc": "门户：点击开始游戏",
         "recognition": {
@@ -20,6 +22,7 @@
                     220
                 ],
                 "expected": [
+                    // @i18n-skip
                     "开始游戏"
                 ]
             }
@@ -34,6 +37,7 @@
             "type": "OCR",
             "param": {
                 "expected": [
+                    // @i18n-skip
                     "知道了"
                 ]
             }
@@ -95,6 +99,7 @@
             "type": "OCR",
             "param": {
                 "expected": [
+                    // @i18n-skip
                     "网络连接异常，请检查网络连接后重试"
                 ]
             }
@@ -108,6 +113,7 @@
             "type": "OCR",
             "param": {
                 "expected": [
+                    // @i18n-skip
                     "游戏正在重连中"
                 ]
             }
@@ -143,6 +149,7 @@
                     130
                 ],
                 "expected": [
+                    // @i18n-skip
                     "请输入手机号"
                 ]
             }
