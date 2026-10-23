@@ -123,6 +123,11 @@ export async function fetchCases(): Promise<TestCases[]> {
     ADB: 'ADB',
     CloudADB: 'CloudADB',
     CloudBrowser: 'CloudBrowser',
+    // 内嵌 WebView 的两条控制器要独立的用例图：MaaEnd 的 --app 外置窗口抓帧里顶部约 31px 是
+    // Chromium 自绘标题栏、右侧 16px 是页面滚动条，而内嵌虚拟屏是干净的 1280x720 CSS 视口，
+    // 同一份门户截图在两者之间不通用（CloudBrowserMobile 的画面还是 <video> 缩放后的安卓客户端）。
+    CloudBrowserPC: 'CloudBrowserPC',
+    CloudBrowserMobile: 'CloudBrowserMobile',
     // 'PlayCover': '',
   }
 
