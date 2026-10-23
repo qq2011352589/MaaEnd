@@ -52,6 +52,31 @@ func TestIsAdbLikeControllerType(t *testing.T) {
 	}
 }
 
+// 云浏览器三条控制器名都要认出来：外置 Chrome 那条，以及 MaaFwApp 内嵌 WebView 的 pc / mobile 两条。
+// 它们在框架侧分别是 Win32 与 native_android，类型上区分不出「云端画面」这件事。
+func TestIsCloudBrowserControllerName(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{ControllerNameCloudBrowser, true},
+		{ControllerNameCloudBrowserPC, true},
+		{ControllerNameCloudBrowserMobile, true},
+		{"Win32", false},
+		{"ADB", false},
+		{"CloudADB", false},
+		{"CloudEndfield", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := IsCloudBrowserControllerName(c.name); got != c.want {
+				t.Fatalf("IsCloudBrowserControllerName(%q) = %v, want %v", c.name, got, c.want)
+			}
+		})
+	}
+}
+
 // controllerKindFromInfo 是 PI_CONTROLLER 缺失时的兜底路径，覆盖 MaaFramework 的 GetInfo 输出。
 func TestControllerKindFromInfo(t *testing.T) {
 	cases := []struct {

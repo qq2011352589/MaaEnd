@@ -237,6 +237,35 @@ func ControllerName() string {
 // to compare this name rather than ControllerKind().
 const ControllerNameCloudBrowser = "CloudBrowser"
 
+// ControllerNameCloudBrowserPC and ControllerNameCloudBrowserMobile are the MaaFwApp
+// embedded-WebView controllers (the portal opens in an in-app WebView on a virtual
+// display instead of an external Chrome window). They also declare type Win32, and the
+// framework reports native_android for them on-device, so the controller name stays the
+// only reliable way to recognise "this is a cloud browser, not a local client".
+const (
+	ControllerNameCloudBrowserPC     = "CloudBrowserPC"
+	ControllerNameCloudBrowserMobile = "CloudBrowserMobile"
+)
+
+// IsCloudBrowserControllerName reports whether an interface.json controller name drives
+// the game through the Cloud Endfield web portal, either as an external browser window or
+// as an embedded WebView. Cloud frames arrive through a <video> element with its own
+// loading and black-frame behaviour, so anything keyed on "is this a cloud browser" should
+// use this instead of comparing a single name.
+func IsCloudBrowserControllerName(name string) bool {
+	switch name {
+	case ControllerNameCloudBrowser, ControllerNameCloudBrowserPC, ControllerNameCloudBrowserMobile:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsCloudBrowserController is IsCloudBrowserControllerName for the running controller.
+func IsCloudBrowserController() bool {
+	return IsCloudBrowserControllerName(ControllerName())
+}
+
 /* ******** Controller Kind ******** */
 
 // Normalized controller kinds. Both the raw type injected by the Client

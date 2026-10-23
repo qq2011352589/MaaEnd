@@ -71,8 +71,9 @@ func (r *ScreenshotStableRecognition) Run(ctx *maa.Context, arg *maa.CustomRecog
 }
 
 func shouldRunScreenshotStable() bool {
-	name := pienv.ControllerName()
-	return name == "Win32-Front" || name == pienv.ControllerNameCloudBrowser
+	// 云浏览器的画面是页面里 <video> 解出来的，首帧黑场与加载帧都会被抓进来，故需要稳定帧判定；
+	// 内嵌 WebView 两条控制器（CloudBrowserPC / CloudBrowserMobile）同样是云端画面。
+	return pienv.ControllerName() == "Win32-Front" || pienv.IsCloudBrowserController()
 }
 
 func finishScreenshotStable() {
