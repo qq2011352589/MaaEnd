@@ -9,6 +9,12 @@ include:
   - resource/**
   - resource_adb/**
   - resource_cloud_adb/**
+  # 内嵌浏览器控制器的 overlay。配方里写了 include 就完全以配方为准（见
+  # Android/MaaFwApp/INTEGRATION.md「include 缺省含 resource_*/**」），所以这两条不写就不进 APK，
+  # 而 interface.json 里 CloudBrowserPC / CloudBrowserMobile 的 attach_resource_path 指向它们，
+  # 设备上 overlay 目录不存在 = 门户节点全部缺失，内嵌方案根本跑不起来。
+  - resource_cloud_browser/**
+  - resource_cloud_browser_mobile/**
   - data/**
   - locales/**
 
