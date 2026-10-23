@@ -162,6 +162,30 @@ Ninja cannot be found during the configure step. Install the SDK's CMake (which 
 
 Your system only has an old CMake. See [1.2](#12-choose-a-cmake) for how to install one.
 
+### `CANNOT LINK EXECUTABLE "…libcpp-algo.so": cannot locate symbol "OrtGetApiBase"`
+
+The error names a **symbol**, not a missing library — the loader did find `libonnxruntime.so`, it just exports a different symbol version.
+
+On Android the agent and the app share one native library directory (`/data/app/…/lib/arm64`; the PI unpack directory lives on noexec external storage and cannot be exec'd, so agents can only start from the former), so there is room for exactly one `libonnxruntime.so` under that SONAME, and bionic checks ELF symbol versions strictly: the `OrtGetApiBase@VERS_x.y.z` recorded in `libcpp-algo.so` has to match the `@@VERS_x.y.z` that library exports, character for character.
+
+> [!NOTE]
+>
+> Only Android breaks this way. On Windows MaaDeps ships the library renamed to `onnxruntime_maa.dll`, so it can coexist with the `onnxruntime.dll` that comes with MaaFramework in the same process, and a version mismatch never surfaces as a link error.
+
+What the device log looks like, in order: `MaaRunner: agent[0] connected` → `ExecAgentHost: launching …libcpp-algo.so` → the linker fatal above → `agent exited unexpectedly … exitCode=1` → about thirty seconds later `prepare failed: agent[1]: agent 连接超时：agent/cpp-algo`, and the whole run never starts.
+
+The cause is almost always **MaaDeps and MaaFramework coming from different vintages**: MaaDeps keeps tracking ONNX Runtime (v3.0.0 onward carries ORT 1.29), while the downloaded MaaFramework prebuilt still links the older one. You can tell without downloading anything — compare md5s: `libfastdeploy_ppocr.so` inside MaaDeps' `MaaDeps-<triplet>-runtime` archive must be byte-identical to the one under `deps-android/<abi>/bin/`.
+
+To fix it, add the matching entry for the MaaFramework tag you use to `MAADEPS_VERSION_BY_MAAFW` in `tools/maadeps-download.py` (v5.14.x ↔ v2.12.6: that runtime's `libonnxruntime.so` is 27,905,128 bytes and exports `VERS_1.19.2`), then delete `agent/cpp-algo/MaaUtils/MaaDeps/vcpkg/installed/maa-arm64-android` and download plus rebuild.
+
+> [!WARNING]
+>
+> Swapping the version does not by itself recompile the old objects: headers unpacked from the tarball carry the packaging date as mtime, which is *older* than the `.o` files from the previous build, so Ninja sees no changed dependency. Either delete `agent/cpp-algo/build/android/<abi>` or `touch` the whole new `include/` tree. Check before packaging:
+>
+> ```
+> llvm-readelf --dyn-syms Android/agent-dist/<abi>/jniLibs/libcpp-algo.so | grep OrtGetApiBase
+> ```
+
 ---
 
 ## 5. Extra traps on Windows ARM64

@@ -162,6 +162,30 @@ run: uv run tools/build_android_agents.py
 
 系统里只有旧版 CMake，装法见 [1.2](#12-选一份-cmake)。
 
+### `CANNOT LINK EXECUTABLE "…libcpp-algo.so": cannot locate symbol "OrtGetApiBase"`
+
+报的是**符号**找不到，不是 `library not found`——加载器已经摸到 `libonnxruntime.so` 了，只是那份导出的符号版本对不上。
+
+Android 上 agent 与 app 共用同一个 native lib 目录（`/data/app/…/lib/arm64`；PI 解包目录落在 noexec 的外部存储上，exec 不了，所以 agent 只能从前者起），`libonnxruntime.so` 这个 SONAME 那儿只能有一份，而 bionic 严格校验 ELF 符号版本：`libcpp-algo.so` 里记的 `OrtGetApiBase@VERS_x.y.z` 必须与那份库导出的 `@@VERS_x.y.z` 完全一致。
+
+> [!NOTE]
+>
+> 这条只炸 Android。MaaDeps 在 Windows 上把库改名成 `onnxruntime_maa.dll`，与 MaaFramework 自带的 `onnxruntime.dll` 能在同一进程里并存，版本对不上也不会当场报链接错误，所以桌面端看不出问题。
+
+真机上的症状顺序：`MaaRunner: agent[0] connected` → `ExecAgentHost: launching …libcpp-algo.so` → linker 这句 fatal → `agent exited unexpectedly … exitCode=1` → 三十秒后 `prepare failed: agent[1]: agent 连接超时：agent/cpp-algo`，整个任务不起。
+
+原因几乎都是 **MaaDeps 与 MaaFramework 不同源**：MaaDeps 会追着 ONNX Runtime 升（v3.0.0 起 ORT 到 1.29），而下载来的那份 MaaFramework 预编译产物还是旧 ORT。不用下载就能判断同不同源——比 md5：MaaDeps 的 `MaaDeps-<triplet>-runtime` 包里的 `libfastdeploy_ppocr.so`，与 `deps-android/<abi>/bin/` 下同名文件一致即同源。
+
+修法是在 `tools/maadeps-download.py` 的 `MAADEPS_VERSION_BY_MAAFW` 里给所用 MaaFramework tag 补一条对应版本（v5.14.x ↔ v2.12.6：那份 runtime 里 `libonnxruntime.so` 是 27,905,128 字节、导出 `VERS_1.19.2`），删掉 `agent/cpp-algo/MaaUtils/MaaDeps/vcpkg/installed/maa-arm64-android` 重下重编。
+
+> [!WARNING]
+>
+> 换完版本旧 object 不会自动重编：tar 解出来的头 mtime 是打包那天，比上次编出来的 `.o` 还早，Ninja 会判定依赖没变。要么删掉 `agent/cpp-algo/build/android/<abi>`，要么把新 `include/` 整棵 `touch` 一遍。编完先验再出包：
+>
+> ```
+> llvm-readelf --dyn-syms Android/agent-dist/<abi>/jniLibs/libcpp-algo.so | grep OrtGetApiBase
+> ```
+
 ---
 
 ## 5. Windows ARM64 上的额外坑
