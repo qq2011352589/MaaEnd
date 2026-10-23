@@ -206,6 +206,18 @@ curl.exe -sSL --fail -C - --retry 3 \
 >
 > 脚本中断时留在缓存里的是**从头写的半截文件**（`download()` 直接 `open(dest, "wb")` 流式写），所以 `-C -` 续传是安全的。半截文件若是别处来的，先删干净再下。
 
+### Go 模块代理走不通
+
+`proxy.golang.org` 在这个网络里是 IPv6 直连超时（`connectex: The connected party did not properly respond`），交叉编译 go-service 时 `go: downloading ...` 会直接失败。指到可达的镜像即可：
+
+```powershell
+$env:GOPROXY = 'https://goproxy.cn,direct'
+```
+
+> [!NOTE]
+>
+> 换镜像不影响完整性：仓库带 `go.sum`，镜像给出的包哈希对不上就会报错。
+
 ### 写 `.ps1` 就只用 ASCII
 
 5.1 读没有 BOM 的 UTF-8 脚本会按本地代码页解析，中文注释直接变成语法错误（`意外的标记')'`）。要么存成带 BOM 的 UTF-8，要么注释写英文。

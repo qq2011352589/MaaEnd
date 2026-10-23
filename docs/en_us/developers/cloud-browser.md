@@ -92,10 +92,13 @@ symptom. Read this before the first device run so a known gap is not debugged as
    `resource_adb`-first template layering. Telling them apart requires the controller name, and
    cpp-algo does not read `PI_CONTROLLER` today (the precedent for reading the environment is
    `PI_CLIENT_LANGUAGE` in `notice.cpp`).
-4. **Frame stabilization does not cover the embedded controllers.** `shouldRunScreenshotStable()` in
-   `scenemanager/screenshotstable.go` only accepts `Win32-Front` and `pienv.ControllerNameCloudBrowser`.
-   Cloud gaming emits black first frames and loading frames, so anything relying on a stable frame can
-   consume a frame that is not ready yet.
+4. **Frame stabilization missed the embedded controllers (now fixed).** `shouldRunScreenshotStable()`
+   in `scenemanager/screenshotstable.go` used to accept only `Win32-Front` and
+   `pienv.ControllerNameCloudBrowser`, leaving `CloudBrowserPC` and `CloudBrowserMobile` out. Cloud
+   gaming emits black first frames and loading frames, so anything relying on a stable frame could
+   consume a frame that is not ready yet. It now calls `pienv.IsCloudBrowserController()`, which covers
+   all three names — still compared by name, because on-device the framework reports
+   `native_android`.
 5. **Mobile is missing its `OpenGame.next` override.** `resource_cloud_browser_mobile` currently only
    overrides the ROI of two portal nodes and never touches the entry chain, so `CloudBrowserMobile`
    inherits the PC-mode desktop sequence that starts with `EnterGame`. The title page of the cloud

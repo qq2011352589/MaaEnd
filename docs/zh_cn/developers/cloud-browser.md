@@ -75,9 +75,11 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
    `MaaControllerGetInfo().type`——在手机上就是 `native_android`。于是跑着 Windows 客户端、桌面布局的
    `CloudBrowserPC` 也会拿到 `resource_adb` 优先的模板层次。要区分只能比较控制器名，而 cpp-algo 目前
    没有读 `PI_CONTROLLER`（读环境变量的先例是 `notice.cpp` 里的 `PI_CLIENT_LANGUAGE`）。
-4. **画面稳定检测不覆盖内嵌两条。** `scenemanager/screenshotstable.go` 的 `shouldRunScreenshotStable()`
-   只认 `Win32-Front` 与 `pienv.ControllerNameCloudBrowser`。云游戏有黑场首帧和加载帧，这条不补，
-   依赖稳定帧的节点会把没就绪的画面当有效画面用。
+4. **画面稳定检测过去漏掉内嵌两条（已修）。** `scenemanager/screenshotstable.go` 的
+   `shouldRunScreenshotStable()` 以前只认 `Win32-Front` 与 `pienv.ControllerNameCloudBrowser`，
+   `CloudBrowserPC` / `CloudBrowserMobile` 不在名单里。云游戏有黑场首帧和加载帧，漏掉就意味着依赖
+   稳定帧的节点会把没就绪的画面当有效画面用。现在统一走 `pienv.IsCloudBrowserController()`，
+   三条控制器名都算——比较的仍然是名字，因为设备侧框架报的类型是 `native_android`。
 5. **手机版缺 `OpenGame.next` 覆盖。** `resource_cloud_browser_mobile` 目前只覆盖了两个门户节点的 roi，
    没有覆盖入口链，所以 `CloudBrowserMobile` 继承的是电脑版那条以 `EnterGame` 打头的桌面序列。
    云安卓客户端进入游戏后的标题页本该走 `resource_adb`，`CloudEndfield*` 在当前配置下不可达。

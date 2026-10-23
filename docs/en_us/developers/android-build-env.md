@@ -206,6 +206,18 @@ curl.exe -sSL --fail -C - --retry 3 \
 >
 > A file the script left behind is a **truncated copy written from offset 0** (`download()` streams straight into `open(dest, "wb")`), so resuming with `-C -` is safe. If a partial file came from anywhere else, delete it first.
 
+### The Go module proxy is unreachable
+
+`proxy.golang.org` times out on direct IPv6 from this network (`connectex: The connected party did not properly respond`), so cross-compiling go-service dies at `go: downloading ...`. Point Go at a reachable mirror:
+
+```powershell
+$env:GOPROXY = 'https://goproxy.cn,direct'
+```
+
+> [!NOTE]
+>
+> Switching mirrors does not weaken integrity: the repository ships `go.sum`, and a package whose hash does not match is rejected.
+
 ### Keep `.ps1` files ASCII-only
 
 PowerShell 5.1 reads a UTF-8 script without BOM in the local code page, so Chinese comments become syntax errors (`意外的标记')'`). Either save as UTF-8 with BOM or write the comments in English.
