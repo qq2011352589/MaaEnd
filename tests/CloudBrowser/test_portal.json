@@ -41,6 +41,23 @@
             "hits": [
                 "CloudBrowserGameStarting"
             ]
+        },
+        {
+            "name": "云客户端闲置被回收：整屏只剩「长时间未操作」，点知道了退回门户",
+            "image": "云浏览器_云流_长时间未操作.png",
+            "hits": [
+                "CloudBrowserSessionIdleEnded",
+                "CloudBrowserSessionIdleEndedText",
+                "CloudBrowserDialogConfirmButton"
+            ]
+        },
+        {
+            "name": "点掉闲置提示后的已登录门户：账号面板与开始游戏同时在场",
+            "image": "云浏览器_门户_已登录.png",
+            "hits": [
+                "CloudBrowserPortalLoggedIn",
+                "CloudBrowserPortalStartGame"
+            ]
         }
     ]
 }

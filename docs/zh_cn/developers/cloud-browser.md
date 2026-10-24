@@ -119,9 +119,14 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
    实测同一会话的淡入帧 `EnterGameOCR` 已是 0.9999，`EnterGameRecognition` 只有 0.39，`EnterGame` 的 `And`
    因此不成立——这是「等稳定帧」，不是「识别坏了」。所以遮罩撤掉后 NextList 先空一两轮是正常的。
 7. **门户层还有孤儿节点与缺失分支。** `CloudBrowserPortalLoggedIn`（`Portal.json`）没有任何节点或 `next`
-   引用它；排队（`排队中`）、时长耗尽、重连失败仍只有识别、没有恢复分支。
+   引用它（只在用例里当断言用）；排队（`排队中`）、时长耗尽、重连失败仍只有识别、没有恢复分支。
    启动遮罩这一支已补：`CloudBrowserGameStarting` 整帧 OCR「游戏启动中」、`DoNothing`、`rate_limit 2000`，
-   在 `OpenGame.next` 里带 `[JumpBack]` 当等待态用（见「内嵌真机实测」第二轮）。i18n 那边不算缺口但值得记一笔：
+   在 `OpenGame.next` 里带 `[JumpBack]` 当等待态用（见「内嵌真机实测」第二轮）。
+   会话闲置回收这一支也已补：`CloudBrowserSessionIdleEnded` 用「长时间未操作」+ 复用门户的「知道了」按钮
+   定位，点击后退回已登录门户，同样以 `[JumpBack]` 挂在 `OpenGame.next`。2026-10-24 实测：08:28 到标题页后
+   一直没人操作，12:22 虚拟屏上只剩这个云客户端弹窗（整屏黑底 + 「由于您长时间未操作，本次游戏已自动结束」）；
+   手动点掉后回到已登录门户，通行证 UID、畅玩卡剩余天数、免费时长 565 分钟都在，右下角「开始游戏」可再次点击。
+   没这一步的话，闲置之后重跑任务整屏没有任何可命中节点，只会空转到判失败。i18n 那边不算缺口但值得记一笔：
    `tools/i18n/sync_ocr_expected.py` 只扫 `resource` / `resource_adb` / `resource_cloud_adb` 三个 pipeline，
    两个门户 overlay 不在扫描路径里（门户文案跟客户端语言无关），节点已逐个标 `@i18n-skip`，
    将来真把 overlay 纳入扫描也不会把「开始游戏」按语言表展开。
@@ -166,9 +171,12 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
   预览的多指槽位会被 `RemoteServiceImpl` 传成非 0 contact，pc 模式必须经 `InputControlUtils.previewContact`
   压回 0，否则 `SOURCE_MOUSE` 事件带不上指针。
 - **PI 资源更新踩点。** `PiInstaller.isCurrentInstall()` 只在 `versionCode` 变化时重新解包
-  （当前 3698），改资源不会自动生效。调 roi 时直接把单个 JSON 推进
+  （当前 3700），改资源不会自动生效。调 roi 时直接把单个 JSON 推进
   `files/pi/resource_cloud_browser/pipeline/CloudBrowser/`，属主 `u0_a51:sdcard_rw`、权限 660；
-  正式回归仍要走重新出包。
+  正式回归仍要走重新出包。PI 树在**外部私有目录**（`getExternalFilesDir`，即
+  `/storage/emulated/0/Android/data/<包名>/files/pi/`），不在 `/data/data/<包名>/files/` 下；
+  往内部目录找会得到「No such file or directory」。推完属主 `u0_a51:sdcard_rw`、权限 660 要一起改，
+  root 用 `su -c`（Magisk，uid shell 也能拿到）。
 
 #### 第二轮（2026-10-24）：登录 → 启动遮罩 → 云端标题页
 
@@ -291,7 +299,9 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
 
 - 门户未登录（登录弹窗 + 开始游戏同时在场）、**内嵌虚拟屏上的同一弹窗**（排版比桌面偏左上，
   第 2 例用真机抓帧 `云浏览器_门户_内嵌登录弹窗.png`）、弹窗关闭后只剩开始游戏、被顶号后的重连提示、
-  **内嵌点了开始游戏之后的启动遮罩**（`云浏览器_门户_内嵌启动中.png`，只有「游戏启动中」可认）；
+  **内嵌点了开始游戏之后的启动遮罩**（`云浏览器_门户_内嵌启动中.png`，只有「游戏启动中」可认）、
+  **闲置回收后的云客户端弹窗**（`云浏览器_云流_长时间未操作.png`）以及点掉它之后的已登录门户
+  （`云浏览器_门户_已登录.png`，账号面板与「开始游戏」同时在场）；
 - 云端串流出的标题页能被桌面端 `EnterGame` / `EnterGameOCR` / `EnterGameRecognition` 命中
   （`云浏览器_云流_内嵌标题页.png` 是真机串流帧，不是桌面截图），
   启动 logo 帧全不命中——即 H264 压缩与云侧叠加层（12+ CADPA、沪ICP 备案号、版本号、ms 角标）
@@ -301,9 +311,10 @@ PI 协议不接受未知 `controller[].type`（MaaPiCli 会拒绝整个 interfac
 （download-scripts → download-binary → move-folders），这几步只打步骤名、不打进度，头两三分钟看着像挂死；
 本表 shell 里没有 `node`，要用随 Qoder 带的 Node：
 `ELECTRON_RUN_AS_NODE=1 "<Qoder CN.exe>" node_modules/@nekosu/maa-tools/bin/maa-tools test`。
-整套 1449 个用例约 18 分钟跑完，退出码 0、`tests/maatools/error_details.json` 没有生成，
+整套 1485 项检查约 11 分钟跑完，退出码 0、`tests/maatools/error_details.json` 没有生成，
 新增的内嵌帧用例（`云浏览器_门户_内嵌登录弹窗.png`、`云浏览器_门户_内嵌启动中.png`、
-`云浏览器_云流_内嵌标题页.png`）也在其中通过。
+`云浏览器_云流_内嵌标题页.png`、`云浏览器_云流_长时间未操作.png`、`云浏览器_门户_已登录.png`）
+也在其中通过。
 
 ## 验证状态
 

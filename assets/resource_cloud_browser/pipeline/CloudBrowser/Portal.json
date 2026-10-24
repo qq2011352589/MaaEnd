@@ -112,6 +112,41 @@
             }
         }
     },
+    "CloudBrowserSessionIdleEnded": {
+        // 云客户端自己的弹窗（画在 <video> 里，不是门户 HTML）：长时间没人操作后云会话被回收，
+        // 整屏变黑只剩「由于您长时间未操作，本次游戏已自动结束 / 知道了」。
+        // 2026-10-24 实测：08:28 到达标题页后一直没人动，12:22 虚拟屏上就是这个弹窗；
+        // 点「知道了」会退出客户端并回到已登录门户（账号面板与右下角「开始游戏」都在，免费时长没变）。
+        // 不点掉它的话，重跑任务时整屏没有任何门户节点能命中，只会空转到判失败。
+        // 文案在视频流里，几何恒为 1280×720，因此直接复用门户的「知道了」按钮节点定位。
+        "desc": "云客户端：长时间未操作，会话已结束，关掉提示退回门户",
+        "recognition": {
+            "type": "And",
+            "param": {
+                "all_of": [
+                    "CloudBrowserSessionIdleEndedText",
+                    "CloudBrowserDialogConfirmButton"
+                ],
+                "box_index": 1
+            }
+        },
+        "action": {
+            "type": "Click"
+        }
+    },
+    "CloudBrowserSessionIdleEndedText": {
+        // "由于您长时间未操作，本次游戏已自动结束"
+        "desc": "云客户端：长时间未操作提示文案",
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                "expected": [
+                    // @i18n-skip
+                    "长时间未操作"
+                ]
+            }
+        }
+    },
     "CloudBrowserGameStarting": {
         // 点了「开始游戏」之后门户会盖一层全屏遮罩转圈，等云 Windows 实例把客户端拉起来。
         // 2026-10-24 内嵌真机实测：从点击到画面出帧用了 15~20 秒，慢的时候更久，期间整页没有可识别元素，

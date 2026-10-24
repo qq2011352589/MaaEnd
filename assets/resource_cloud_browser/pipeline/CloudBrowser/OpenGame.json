@@ -27,6 +27,9 @@
             // 也不命中任何门户节点。必须把它当等待态跳回，否则整条 next 会在 20 秒后判失败——
             // 2026-10-24 内嵌真机：07:55 那轮就是这么死的，而同一账号 08:05 的会话 20 秒内就串上了标题页。
             "[JumpBack]CloudBrowserGameStarting",
+            // 云会话闲置被回收后，整屏只剩「长时间未操作，本次游戏已自动结束」的客户端弹窗。
+            // 点掉它才会退回已登录门户，否则重跑任务时整屏没有可命中节点。2026-10-24 实测。
+            "[JumpBack]CloudBrowserSessionIdleEnded",
             // 仍要排在 CloudBrowserPortalStartGame 之前：会话已失效时登录框会在点之前就盖在页面上，
             // 底下那颗「开始游戏」照样整颗露在右下象限，OCR 命中后点在遮罩上，白点一次。
             "CloudBrowserOpenGameFailed",

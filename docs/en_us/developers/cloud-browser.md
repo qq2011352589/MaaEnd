@@ -152,16 +152,24 @@ symptom; fixed or measured items carry the numbers. Read this before debugging t
    `EnterGameRecognition` only 0.39, so the `And` in `EnterGame` did not hold — that is "waiting for
    a stable frame", not "recognition is broken", and it is why the NextList may idle for a round or
    two after the overlay disappears.
-7. **Orphan nodes and missing branches in the portal layer.** Nothing references
-   `CloudBrowserPortalLoggedIn`, neither a node nor a `next`; queueing, exhausted playtime and
+7. **Orphan nodes and missing branches in the portal layer.** Nothing in the pipeline references
+   `CloudBrowserPortalLoggedIn` (it is only an assertion in tests); queueing, exhausted playtime and
    reconnecting are recognized but have no recovery branch. The boot-overlay branch now exists:
    `CloudBrowserGameStarting` OCRs "游戏启动中" over the full frame, does `DoNothing`, sets
    `rate_limit 2000`, and is used as a waiting state with `[JumpBack]` in `OpenGame.next` (see the
-   second round under "Embedded device runs"). The i18n part is not a gap but is worth
-   recording: `tools/i18n/sync_ocr_expected.py` scans only the `resource`, `resource_adb` and
-   `resource_cloud_adb` pipelines, so neither portal overlay is in scope (portal wording does not
-   follow the client language), and every portal node carries `@i18n-skip` so that adding the
-   overlays later cannot expand "开始游戏" through the language tables.
+   second round under "Embedded device runs").
+   The idle-reclaim branch also exists now: `CloudBrowserSessionIdleEnded` OCRs "长时间未操作" and
+   reuses the portal's "知道了" button for the click, which exits the client back to the logged-in
+   portal; it is likewise `[JumpBack]`-wired into `OpenGame.next`. Measured on 2026-10-24: after
+   reaching the title screen at 08:28 and sitting untouched, the virtual display at 12:22 showed only
+   this cloud-client dialog (black screen plus "由于您长时间未操作，本次游戏已自动结束"); dismissing it
+   by hand returned to the logged-in portal with the passport UID, the play-card days and the
+   565 free minutes intact, and the bottom-right "开始游戏" ready to click again. Without this step,
+   re-running a task after idle finds no matchable node at all and just spins until it fails.
+   The i18n part is not a gap but is worth recording: `tools/i18n/sync_ocr_expected.py` scans only
+   the `resource`, `resource_adb` and `resource_cloud_adb` pipelines, so neither portal overlay is
+   in scope (portal wording does not follow the client language), and every portal node carries
+   `@i18n-skip` so that adding the overlays later cannot expand "开始游戏" through the language tables.
 8. **Embedded mouse clicks did nothing (now fixed).** `InputControlUtils` used to put
    `buttonState = BUTTON_PRIMARY` on `ACTION_DOWN`. Chromium reads that as a button-state sync rather
    than a click, so the page only received `mousemove` and never dispatched
@@ -214,9 +222,13 @@ On a real phone, with the APK built locally and installed. The portal layer work
   pc mode must funnel them through `InputControlUtils.previewContact` back to 0, otherwise the
   `SOURCE_MOUSE` event carries no pointer.
 - **PI resource refresh.** `PiInstaller.isCurrentInstall()` only re-unpacks when `versionCode`
-  changes (currently 3698), so editing resources does not take effect by itself. While tuning ROIs,
+  changes (currently 3700), so editing resources does not take effect by itself. While tuning ROIs,
   push single JSON files into `files/pi/resource_cloud_browser/pipeline/CloudBrowser/` with owner
-  `u0_a51:sdcard_rw` and mode 660; a real regression still needs a rebuilt APK.
+  `u0_a51:sdcard_rw` and mode 660; a real regression still needs a rebuilt APK. The PI tree lives in
+  the **external private directory** (`getExternalFilesDir`, i.e.
+  `/storage/emulated/0/Android/data/<package>/files/pi/`), not under `/data/data/<package>/files/`;
+  looking in the internal directory yields "No such file or directory". Fix owner and mode after
+  copying, and reach root through `su -c` (Magisk grants it to uid shell too).
 
 #### Round two (2026-10-24): login → boot overlay → cloud title screen
 
@@ -366,8 +378,10 @@ is registered in `controllerMap` inside `tests/scripts/loader.mts`. Coverage:
 - Portal before login (login modal and 开始游戏 present together), the same modal as captured on the
   embedded virtual display (case 2, `云浏览器_门户_内嵌登录弹窗.png`, whose layout sits further
   up-left than the desktop), only 开始游戏 after the modal closes, the reconnect toast after the
-  session is taken over, and **the boot overlay that appears after the embedded click**
-  (`云浏览器_门户_内嵌启动中.png`, where only "游戏启动中" is recognizable);
+  session is taken over, **the boot overlay that appears after the embedded click**
+  (`云浏览器_门户_内嵌启动中.png`, where only "游戏启动中" is recognizable), **the cloud-client dialog
+  shown after an idle reclaim** (`云浏览器_云流_长时间未操作.png`), and the logged-in portal it returns
+  to (`云浏览器_门户_已登录.png`, account panel and 开始游戏 present together);
 - The cloud-streamed title page is recognized by the desktop `EnterGame` / `EnterGameOCR` /
   `EnterGameRecognition` (`云浏览器_云流_内嵌标题页.png` is a real device stream frame, not a desktop
   screenshot), while the boot logo frame hits none of them — i.e. H264 compression and the cloud-side
@@ -379,9 +393,10 @@ How it runs locally (measured 2026-10-24): `npm test` first lets maa-tools fetch
 step names, no progress, so the first two or three minutes look like a hang. There is no `node` on
 this machine's shell PATH either; use the Node bundled with Qoder:
 `ELECTRON_RUN_AS_NODE=1 "<Qoder CN.exe>" node_modules/@nekosu/maa-tools/bin/maa-tools test`.
-All 1449 cases finished in about 18 minutes with exit code 0, `tests/maatools/error_details.json`
+All 1485 checks finished in about 11 minutes with exit code 0, `tests/maatools/error_details.json`
 was not created, and the new embedded frames (`云浏览器_门户_内嵌登录弹窗.png`,
-`云浏览器_门户_内嵌启动中.png`, `云浏览器_云流_内嵌标题页.png`) passed along with them.
+`云浏览器_门户_内嵌启动中.png`, `云浏览器_云流_内嵌标题页.png`,
+`云浏览器_云流_长时间未操作.png`, `云浏览器_门户_已登录.png`) passed along with them.
 
 ## Verification status
 
