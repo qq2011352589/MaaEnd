@@ -37,8 +37,11 @@ touch → mobile. PC mode therefore injects native `SOURCE_MOUSE` events through
 `InputControlUtils` (down with `WAIT_FOR_FINISH`, unpressed movement as `ACTION_HOVER_MOVE`,
 pressed movement as `ACTION_MOVE`), while mobile mode keeps touch injection. The embedded
 Activity overrides its *configuration* density with `config.densityDpi = DisplayMetrics.DENSITY_DEFAULT`
-(`CloudBrowserActivity.kt`) so the 1280×720 virtual display maps to 1280×720 CSS pixels and the
-desktop portal ROIs still apply. Note that the virtual display itself still reports the phone's
+(`CloudBrowserActivity.kt`), but **the WebView's `devicePixelRatio` follows the display**: measured
+dpr 1.5 and an 854×480 CSS viewport (see gap 2). The page scales its own content into that CSS space
+and lands back on 1280×720 physical pixels, so **the desktop portal ROIs are reused in physical
+pixels** — do not divide by the dpr, and do not describe the viewport as 1280×720 CSS. Note that the
+virtual display itself still reports the phone's
 240 dpi (`adb shell dumpsys display` shows that number); only the Activity's Configuration is
 overridden, so do not assert "the virtual display density is 160". The mobile portal layout differs,
 so `resource_cloud_browser_mobile` switches the "开始游戏" button and login form back to full-frame
@@ -67,10 +70,11 @@ resources follow the cloud platform: PC uses the desktop `resource`, mobile also
 `resource_adb`. `CloudBrowser` (external) remains desktop-only, and its pretask does not run in
 MaaFwApp.
 
-The embedded path is now verified on a real device down to the portal layer (see "First embedded
-device run"): `CloudBrowserPC` attaches to the virtual display, `CloudBrowserPortalStartGame` hits,
-and a mouse click injected by the app itself opens the Hypergryph login modal. Nothing past that
-modal has been verified yet.
+The embedded path is verified on a real device all the way to the cloud title screen (see
+"Embedded device runs"): `CloudBrowserPC` attaches to the virtual display, `CloudBrowserPortalStartGame`
+hits, a mouse click injected by the app itself opens the Hypergryph login modal, and once signed in
+the portal's "开始游戏" → boot overlay → 1280×720 stream → `EnterGame` chain ends in a successful
+task. The mobile controller (`CloudBrowserMobile`) is still untested.
 
 ### Known gaps on the embedded path
 
@@ -90,15 +94,21 @@ symptom; fixed or measured items carry the numbers. Read this before debugging t
    and inspect its root directories. Nothing to worry about on the install side:
    `PiInstaller.unpackZip` lays out every root verbatim and only additionally requires a top-level
    `interface.json`.
-2. **The coordinate basis differs from the external browser (now measured).** The external path
+2. **The coordinate basis differs from the external browser (measured; nodes hit).** The external path
    captures the `--app` client area, where the captured 1280×720 frame carries about 31px of title
    bar on top and a 16px scrollbar on the right, leaving a 1264×681 CSS viewport. The embedded
-   Activity overrides `config.densityDpi` to 160, so the 1280×720 virtual display is a clean
-   1280×720 CSS viewport. On the 2026-10-23 embedded device run the "开始游戏" text box measured
-   (1045,660)-(1153,692) — inside the existing ROI, no density conversion needed — while the login modal's
-   "请输入手机号" measured (402,211)-(549,239): the old ROI's left edge at 420 cut into the first
-   glyph and OCR then found no line at all. `CloudBrowserPortalLoginModal`'s ROI is now
-   `[380,180,520,180]`, wide enough for both the desktop and the embedded geometry.
+   Activity pins `config.densityDpi` to 160 in `attachBaseContext`, but **the WebView's
+   `devicePixelRatio` follows the display, not the Activity configuration**: measured on 2026-10-24,
+   `window.devicePixelRatio = 1.5` and `innerWidth/Height = 854×480`, i.e. the 1280×720 virtual
+   display spans 854×480 CSS pixels. The portal lays its key areas out in that CSS space (the title
+   page's `<video>` box is `854 / 0.6667 ≈ 1281` CSS wide and then `transform: scale(0.666667)` brings
+   it back to 854 CSS; ×1.5 dpr lands on exactly 1280 physical pixels), so **captures are still
+   1280×720 and ROIs are still written in physical pixels** — do not divide by the dpr.
+   The responsive layout does change, though: on the 2026-10-23 embedded run the "开始游戏" text box
+   measured (1045,660)-(1153,692) — inside the existing ROI — while the login modal's "请输入手机号"
+   measured (402,211)-(549,239): the old ROI's left edge at 420 cut into the first glyph and OCR then
+   found no line at all. `CloudBrowserPortalLoginModal`'s ROI is now `[380,180,520,180]`, wide enough
+   for both the desktop and the embedded geometry.
 3. **cpp-algo picks resource roots by controller type, so both embedded controllers look like an
    Android client.** `ResourceImageRoots()` in `MapNavigator/controller_type_utils.h` only looks at the
    type, `native_android` is in `kAdbLikeControllerTypes`, and `DetectControllerType()` in
@@ -125,16 +135,32 @@ symptom; fixed or measured items carry the numbers. Read this before debugging t
    Android client should be reached through `resource_adb`, and `CloudEndfield*` is unreachable under
    the current configuration. Until that override exists, mobile can only verify "clicked into the queue
    from the portal", not anything after entering the game.
-6. **The `<video>` geometry is uncalibrated.** The streamed picture is a `<video>` element inside the
-   portal page, while the virtual display captures the whole 1280×720 page. Whether the picture fills
-   the viewport, and whether there are letterbox bars, decides whether the 720p ROIs of `resource_adb`
-   can be used as-is. That can only be measured on device.
+6. **The `<video>` geometry (now calibrated).** The streamed picture is a `<video>` element inside the
+   portal page, while the virtual display captures the whole 1280×720 page. Measured on the
+   embedded device on 2026-10-24: `getBoundingClientRect()` is (0,0)-(854,480) CSS,
+   `videoWidth×videoHeight = 1280×720`, `object-fit: fill`, the wrapper carries
+   `transform: scale(0.666667)`, and dpr is 1.5 — which works out to 1281×720 physical pixels, so the
+   frame is **full-bleed with no letterbox**. A streamed title-page capture is structurally identical
+   to the desktop 720p one: `EnterGameOCR`'s ROI (x ≥ W-250, y 200–600) covers "点击任意位置继续"
+   at about (1113,371)-(1250,390), and `EnterGameRecognition`'s announcement/settings/repair buttons
+   sit inside (1067,0,213,276), so the 720p ROIs from `resource_adb` apply unchanged. The only
+   difference is video compression: text has slight ghosting, yet the new embedded real frame added
+   to the offline matrix on 2026-10-24 (the one taken after the fade-in finished) still hits all
+   three template nodes. **The fade-in itself does not count as a hit**: for a second or two after
+   the first frame the picture still carries scrolling yellow blocks and fading icons. Measured on
+   that same session, the fade-in frame gave `EnterGameOCR` 0.9999 but
+   `EnterGameRecognition` only 0.39, so the `And` in `EnterGame` did not hold — that is "waiting for
+   a stable frame", not "recognition is broken", and it is why the NextList may idle for a round or
+   two after the overlay disappears.
 7. **Orphan nodes and missing branches in the portal layer.** Nothing references
    `CloudBrowserPortalLoggedIn`, neither a node nor a `next`; queueing, exhausted playtime and
-   reconnecting are recognized but have no recovery branch. The i18n part is not a gap but is worth
+   reconnecting are recognized but have no recovery branch. The boot-overlay branch now exists:
+   `CloudBrowserGameStarting` OCRs "游戏启动中" over the full frame, does `DoNothing`, sets
+   `rate_limit 2000`, and is used as a waiting state with `[JumpBack]` in `OpenGame.next` (see the
+   second round under "Embedded device runs"). The i18n part is not a gap but is worth
    recording: `tools/i18n/sync_ocr_expected.py` scans only the `resource`, `resource_adb` and
    `resource_cloud_adb` pipelines, so neither portal overlay is in scope (portal wording does not
-   follow the client language), and every portal node now carries `@i18n-skip` so that adding the
+   follow the client language), and every portal node carries `@i18n-skip` so that adding the
    overlays later cannot expand "开始游戏" through the language tables.
 8. **Embedded mouse clicks did nothing (now fixed).** `InputControlUtils` used to put
    `buttonState = BUTTON_PRIMARY` on `ACTION_DOWN`. Chromium reads that as a button-state sync rather
@@ -150,16 +176,31 @@ symptom; fixed or measured items carry the numbers. Read this before debugging t
    `CloudBrowserPortalStartGame` and the three error branches as terminal nodes, so nobody ever saw
    the login modal appear after the "successful" click. All portal nodes are now `[JumpBack]`, and
    only `CloudBrowserOpenGameFailed` stays terminal (deciding the task failed is a real endpoint).
+10. **Starting the task again tears down a live stream (now fixed).** `CloudBrowserActivity` is
+    `singleTask` and the privileged process launches it once per run; the old `onNewIntent` called
+    `loadPortal()` unconditionally. So while the stream was already on the title screen, tapping
+    "开始任务" again reloaded the page back to the portal — and because the page registers
+    `beforeunload`, it raised a native "确认离开" dialog. That dialog covers the virtual display,
+    nothing matches, and the task spins until it fails. That is exactly what the device showed on
+    2026-10-24 (task started 08:07:32, failed 08:07:51). `loadPortal()` now compares `mode` and
+    `url` and only calls `requestFocus()` when both are unchanged.
+11. **A 1–2 second gap between the "开始游戏" click and the overlay, which invited a double click
+    (now mitigated).** In one run `CloudBrowserPortalStartGame` hit at 07:55:35.7 and again at 39.5;
+    the server received two `session/dispatch` calls 1.4 s apart and the first session's `<video>`
+    track then `ended` outright. The node now carries `post_delay: 2000` to suppress the repeat; once
+    the overlay is up, `CloudBrowserGameStarting` takes over and nothing clicks again.
 
-### First embedded device run
+### Embedded device runs
 
-2026-10-23, on a real phone with an APK built locally and installed. The portal layer works:
+#### Round one (2026-10-23): portal layer
+
+On a real phone, with the APK built locally and installed. The portal layer works:
 
 - **Activity and virtual display.** `CloudBrowserActivity: mode=pc` started on the virtual display
-  and mirroring worked. The virtual display id changes every run (observed 4 → 6 → 7 → 8); never
-  hard-code it in a script.
+  and mirroring worked. The virtual display id changes every run (observed 4 → 6 → 7 → 8 → 9 → 10);
+  never hard-code it in a script.
 - **Portal recognition.** `CloudBrowserPortalStartGame` hit (1045,660,108,32); after the ROI
-  widening, `CloudBrowserPortalLoginModal` hit (402,211)-(549,239). That frame is now case 4 of
+  widening, `CloudBrowserPortalLoginModal` hit (402,211)-(549,239). That frame is now case 2 of
   `tests/CloudBrowser/test_portal.json` and passed the offline matrix on 2026-10-24 (see "Tests").
 - **Portal click.** The app's own injected mouse click really did open the Hypergryph login modal,
   after which `CloudBrowserOpenGameFailed` hit and stopped the task — the expected outcome, since
@@ -176,9 +217,41 @@ symptom; fixed or measured items carry the numbers. Read this before debugging t
   changes (currently 3698), so editing resources does not take effect by itself. While tuning ROIs,
   push single JSON files into `files/pi/resource_cloud_browser/pipeline/CloudBrowser/` with owner
   `u0_a51:sdcard_rw` and mode 660; a real regression still needs a rebuilt APK.
-- **Still unverified.** Everything after the login modal — it needs a real account and an SMS code.
-  Gaps 5 (mobile `OpenGame.next`) and 6 (`<video>` geometry) therefore produced no data, and
-  `CloudBrowserMobile` has not been run at all.
+
+#### Round two (2026-10-24): login → boot overlay → cloud title screen
+
+This round closed gap 6 and fixed the three problems it hit (gaps 10 and 11 plus the missing
+waiting node):
+
+- **Login.** Signing in to the cloud instance only works in `CloudBrowserLoginActivity` on the
+  primary display (the virtual display has no IME, and the virtual display's page steals WebView
+  input focus). A bound phone number plus an SMS code; afterwards the portal shows the passport UID,
+  "畅玩卡剩余 23天16小时" and "免费时长 565分钟". The account and the code are deliberately not
+  recorded here. The cookies land in the app's private `app_webview/` directory, and the virtual
+  display is authenticated from then on. **Never commit those cookies to any repository.**
+- **Click → boot overlay.** In the 07:55 run the injected click triggered `session/dispatch`, but the
+  server received two dispatches within 1.4 s (gap 11) and the first session's `<video>` track then
+  `ended` (a `[reconnectServer], isOnceStartError` line in the console); the page stayed on
+  "游戏启动中，请耐心等待". `OpenGame.next` had no waiting node, so the whole task failed 20 s later
+  (`Tasker.Task.Failed` at 07:56:17). The console showed nothing new for the next two minutes — it
+  was pure idling.
+- **Boot overlay → title screen.** In a fresh run (reload the page, click "开始游戏"; `/session/dispatch`
+  and `/user/exchange` both returned 200) the `<video>` produced frames after about 20 s:
+  `videoWidth×videoHeight = 1280×720`, the track `live`, and the title screen
+  ("明日方舟 终末地 / 点击任意位置继续 / 公告·设置·修复") full-bleed across 1280×720. The frame taken
+  after the fade-in finished is stored as `云浏览器_云流_内嵌标题页.png`, and `EnterGame` /
+  `EnterGameOCR` / `EnterGameRecognition` all hit it (offline matrix under "Tests").
+- **Stream geometry.** See the measured numbers in gap 6: 854×480 CSS × dpr 1.5, video box 1281×720
+  CSS, `object-fit: fill`, 1280×720 physical with no letterbox. The 720p ROIs of `resource_adb`
+  need no recalibration.
+- **End of the chain (the 08:28 run, after installing the new build).** The Activity started on
+  virtual display 10; the portal noticed the account already had a session and auto-dispatched back
+  into it; `CloudBrowserGameStarting` hit every ~2 s from 08:28:26 on (`DoNothing`); at 08:28:48 the
+  overlay went away and the next NextList round missed once; 08:28:50 `EnterGame` hit and 08:28:51
+  ended with `Tasker.Task.Succeeded`. `CloudBrowserOpenGame` means "stop at the title screen", so the
+  task ends there by design.
+- **Still unverified.** `CloudBrowserMobile` end to end (gap 5); reconnection and queueing branches;
+  drag-while-held semantics (see "Ordering for the remaining runs").
 
 ### How the injection fields were traced
 
@@ -205,26 +278,18 @@ permissions.
 
 ### Ordering for the remaining runs
 
-The run above already covered the first four items of the original checklist (the Activity starting
-on the virtual display, the portal nodes hitting, mouse injection, the ROI check). What is left, in
-order:
+Round one covered the Activity starting on the virtual display, the portal nodes hitting, mouse
+injection and the ROI check; round two went through login, the boot overlay, the streamed title
+screen and gap 6. What is left, in order:
 
-1. Once an account that can sign in is available, sign in from Settings first (the virtual display
-   has no IME, so the SMS code can only be typed in the ordinary WebView on the primary display);
-   cookies are shared, so the portal inside the virtual display is then already authenticated.
-2. Pick `CloudBrowserPC`, run `CloudBrowserOpenGame` and grep `adb logcat` for
-   `CloudBrowserActivity: mode=` (the `mode` / `display` / `url` line logged at creation) to confirm the
-   Activity really started on the expected virtual display. When it does not, the error is
-   "任务未出现在虚拟屏" and now carries `presence` plus the app-side `appLaunch` exception;
-   `EmbeddedBrowserPresence` relies on the page self-reporting because `getRunningTasks` cannot see
-   `excludeFromRecents` tasks on some ROMs.
-3. Past the login modal, re-check whether the streamed title page is hit by `EnterGame` /
-   `EnterGameRecognition`. This is also where gap 6 gets measured: whether the `<video>` fills the
-   viewport and whether it has letterbox bars.
-4. For mobile, switch to `CloudBrowserMobile`: first prove touch injection works and that full-frame
-   OCR hits the mobile portal layout, then add the `OpenGame.next` override (gap 5).
-5. Drag semantics while the button is held (`ACTION_MOVE` carrying `buttonState`) are still untested;
+1. Switch to `CloudBrowserMobile`: first prove touch injection works and that full-frame OCR hits
+   the mobile portal layout, then add the `OpenGame.next` override (gap 5).
+2. Queueing / exhausted playtime / reconnection recovery (gap 7) — has to be written before it can
+   be run.
+3. Drag semantics while the button is held (`ACTION_MOVE` carrying `buttonState`) are still untested;
    verifying them needs a draggable control on the page.
+4. Whether the page title still contains "云·终末地" after entering the game (`window_regex`): the
+   task ends at the title screen, so this has not been observed.
 
 ## Four hard constraints
 
@@ -299,21 +364,24 @@ Once inside the game, the title screen still reuses the desktop `EnterGame`.
 is registered in `controllerMap` inside `tests/scripts/loader.mts`. Coverage:
 
 - Portal before login (login modal and 开始游戏 present together), the same modal as captured on the
-  embedded virtual display (case 4, `云浏览器_门户_内嵌登录弹窗.png`, whose layout sits further
-  up-left than the desktop), only 开始游戏 after the modal closes, and the reconnect toast after the
-  session is taken over;
+  embedded virtual display (case 2, `云浏览器_门户_内嵌登录弹窗.png`, whose layout sits further
+  up-left than the desktop), only 开始游戏 after the modal closes, the reconnect toast after the
+  session is taken over, and **the boot overlay that appears after the embedded click**
+  (`云浏览器_门户_内嵌启动中.png`, where only "游戏启动中" is recognizable);
 - The cloud-streamed title page is recognized by the desktop `EnterGame` / `EnterGameOCR` /
-  `EnterGameRecognition`, while the boot logo frame hits none of them — i.e. H264 compression and
-  the cloud-side overlays (12+ CADPA badge, ICP filing number, build string, latency badge) do not
-  affect in-game recognition.
+  `EnterGameRecognition` (`云浏览器_云流_内嵌标题页.png` is a real device stream frame, not a desktop
+  screenshot), while the boot logo frame hits none of them — i.e. H264 compression and the cloud-side
+  overlays (12+ CADPA badge, ICP filing number, build string, latency badge) do not affect in-game
+  recognition.
 
 How it runs locally (measured 2026-10-24): `npm test` first lets maa-tools fetch MaaFramework
 (`preparing maafw` → download-scripts → download-binary → move-folders). Those steps print only
 step names, no progress, so the first two or three minutes look like a hang. There is no `node` on
 this machine's shell PATH either; use the Node bundled with Qoder:
 `ELECTRON_RUN_AS_NODE=1 "<Qoder CN.exe>" node_modules/@nekosu/maa-tools/bin/maa-tools test`.
-All 1438 cases finished in about 18 minutes with exit code 0, `tests/maatools/error_details.json`
-was not created, and the new embedded frame (`云浏览器_门户_内嵌登录弹窗.png`) passed along with them.
+All 1449 cases finished in about 18 minutes with exit code 0, `tests/maatools/error_details.json`
+was not created, and the new embedded frames (`云浏览器_门户_内嵌登录弹窗.png`,
+`云浏览器_门户_内嵌启动中.png`, `云浏览器_云流_内嵌标题页.png`) passed along with them.
 
 ## Verification status
 
@@ -332,14 +400,16 @@ below), so it proves the chain runs, not that the cloud actually started queuein
 Also on 2026-10-23, the portal layer of the MaaFwApp embedded browser was verified on a real phone:
 the APK was built locally and installed, `CloudBrowserPC` started on the virtual display, hit
 "开始游戏", and the app's own injected mouse click opened the Hypergryph login modal (it could not
-before gap 8 was fixed). See "First embedded device run" for the details.
+before gap 8 was fixed). On 2026-10-24 the chain continued to the cloud title screen after signing
+in: injected click → boot overlay → 1280×720 stream → `EnterGame` hit → `Tasker.Task.Succeeded`.
+See "Embedded device runs" for both rounds.
 
-`CloudBrowserMobile` still has no device data at all. The offline matrix (`maa-tools test`, 1438
-cases) went fully green locally on 2026-10-24, including the embedded login-modal frame.
-Remaining unverified items: whether the
-desktop `EnterGame` nodes hit the real streamed picture once logged in, whether the page title still
-contains "云·终末地" after entering the game (`window_regex`), and recovery branches for queueing /
-exhausted playtime / reconnection (not implemented).
+`CloudBrowserMobile` still has no device data at all. The offline matrix went fully green locally on
+2026-10-24, including the embedded login-modal, boot-overlay and streamed-title-screen frames.
+Remaining unverified items: recovery branches for queueing / exhausted playtime / reconnection (not
+implemented), the injection semantics of dragging while held, and whether the page title still
+contains "云·终末地" after entering the game (`window_regex` — this round ended at the title screen
+and never went further).
 
 ### Choosing `screencap`
 
@@ -424,4 +494,3 @@ MaaEnd's production `interface.json` cannot be loaded by `MaaPiCli.exe` of v5.14
 `Failed to parse interface.json`. For manual verification, use a minimal interface without `import`
 that mounts `["./resource", "./resource_cloud_browser"]` and the single
 `CloudBrowserOpenGame` task (`entry: "OpenGame"`); it reproduces the same chain.
-
