@@ -34,6 +34,13 @@
             "hits": [
                 "CloudBrowserPortalReconnecting"
             ]
+        },
+        {
+            "name": "内嵌浏览器点了开始游戏：遮罩转圈等云实例，只有启动中文案可认",
+            "image": "云浏览器_门户_内嵌启动中.png",
+            "hits": [
+                "CloudBrowserGameStarting"
+            ]
         }
     ]
 }

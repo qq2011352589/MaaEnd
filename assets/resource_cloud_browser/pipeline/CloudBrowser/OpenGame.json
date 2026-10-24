@@ -23,6 +23,10 @@
             "EnterGame",
             "[JumpBack]EnterGameResourceInitializeComplete",
             "[JumpBack]EnterGameRecognition",
+            // 云实例启动期间门户只剩一层「游戏启动中，请耐心等待」遮罩，既不命中 EnterGame，
+            // 也不命中任何门户节点。必须把它当等待态跳回，否则整条 next 会在 20 秒后判失败——
+            // 2026-10-24 内嵌真机：07:55 那轮就是这么死的，而同一账号 08:05 的会话 20 秒内就串上了标题页。
+            "[JumpBack]CloudBrowserGameStarting",
             // 仍要排在 CloudBrowserPortalStartGame 之前：会话已失效时登录框会在点之前就盖在页面上，
             // 底下那颗「开始游戏」照样整颗露在右下象限，OCR 命中后点在遮罩上，白点一次。
             "CloudBrowserOpenGameFailed",

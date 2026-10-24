@@ -18,6 +18,15 @@
             "name": "云端启动 logo：还没到标题页，EnterGame 不应命中",
             "image": "云浏览器_云流_启动logo.png",
             "hits": []
+        },
+        {
+            "name": "内嵌浏览器串流出的标题页：视频解码与缩放后的帧仍应命中桌面模板",
+            "image": "云浏览器_云流_内嵌标题页.png",
+            "hits": [
+                "EnterGame",
+                "EnterGameOCR",
+                "EnterGameRecognition"
+            ]
         }
     ]
 }
